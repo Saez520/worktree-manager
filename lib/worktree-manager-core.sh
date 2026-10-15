@@ -8,6 +8,9 @@ set -euo pipefail
 WORKTREES_DIR=".worktrees"
 BRANCH_PREFIX="worktree/"
 STATE_DIR="worktree-manager"
+BACKUP_DIR="backups"
+BACKUP_REF_PREFIX="worktree-manager/backups"
+LOCK_DIR="locks"
 PREPARE_COMMAND=""
 VERIFY_COMMAND=""
 PREPARE_ENABLED=0
@@ -135,6 +138,9 @@ parse_config() {
       state_dir)
         valid_relative_state_dir "$value" || die "state_dir inválido"
         STATE_DIR="$value" ;;
+      backup_dir) [[ -n "$value" && "$value" != /* && "$value" != *..* ]] || die "backup_dir inválido"; BACKUP_DIR="$value" ;;
+      backup_ref_prefix) [[ "$value" =~ ^[A-Za-z0-9._/-]+$ && "$value" != *..* ]] || die "backup_ref_prefix inválido"; BACKUP_REF_PREFIX="$value" ;;
+      lock_dir) valid_relative_state_dir "$value" || die "lock_dir inválido"; LOCK_DIR="$value" ;;
       prepare_command) PREPARE_COMMAND="$value" ;;
       prepare_enabled)
         valid_bool "$value" || die "prepare_enabled debe ser true o false"
@@ -162,7 +168,7 @@ resolve_paths() {
   fi
   STATE_ROOT="$GIT_COMMON_DIR/$STATE_DIR"
   TRANSACTIONS_DIR="$STATE_ROOT/transactions"
-  LOCKS_DIR="$STATE_ROOT/locks"
+  LOCKS_DIR="$STATE_ROOT/$LOCK_DIR"
 }
 
 load_configuration() {
@@ -282,8 +288,8 @@ acquire_locks() {
   done
   LOCK_HELD=1
   CURRENT_OPERATION="$operation"
-  if [[ "${FLOWTASK_TEST_MODE:-0}" == 1 && -n "${FLOWTASK_TEST_LOCK_BARRIER_DIR:-}" && -n "${FLOWTASK_TEST_HOLD_AFTER_LOCK:-}" && "${FLOWTASK_TEST_HOLD_AFTER_LOCK}" == "$operation" ]]; then
-    local barrier="${FLOWTASK_TEST_LOCK_BARRIER_DIR}"
+  if [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 && -n "${WORKTREE_MANAGER_TEST_LOCK_BARRIER_DIR:-}" && -n "${WORKTREE_MANAGER_TEST_HOLD_AFTER_LOCK:-}" && "${WORKTREE_MANAGER_TEST_HOLD_AFTER_LOCK}" == "$operation" ]]; then
+    local barrier="${WORKTREE_MANAGER_TEST_LOCK_BARRIER_DIR}"
     [[ "$barrier" = /* ]] || die_with_unlock "La barrera de tests debe ser absoluta"
     mkdir -p -- "$barrier"
     : > "$barrier/$operation.ready"
@@ -292,40 +298,16 @@ acquire_locks() {
 }
 
 tx_dir_for() { printf '%s/%s' "$TRANSACTIONS_DIR" "$1"; }
-legacy_tx_dir_for() { printf '%s/.flowtask/backups/%s' "$REPO_ROOT" "$1"; }
-tx_dir_read() {
-  local tx_id="$1" new legacy
-  new="$(tx_dir_for "$tx_id")"; legacy="$(legacy_tx_dir_for "$tx_id")"
-  if [[ -d "$new" ]]; then printf '%s' "$new"; elif [[ -d "$legacy" ]]; then printf '%s' "$legacy"; else return 1; fi
-}
-legacy_mirror_dir() { printf '%s' "$(legacy_tx_dir_for "$1")"; }
-
-# A new transaction keeps its payload under <git-common-dir>/<state_dir>, and
-# mirrors a *complete* copy into the legacy location that existing FlowTask
-# readers already know about.  The mirror must carry tracked/untracked path
-# lists too: `tx_dir_read` falls back to legacy, and a meta+journal-only mirror
-# would make recovery skip the destination cleanup it depends on.
-mirror_tx_payload() {
-  local tx_dir="$1" legacy payload
-  legacy="$(legacy_mirror_dir "$(basename "$tx_dir")")"
-  [[ "$tx_dir" != "$legacy" ]] || return 0
-  for payload in tracked.paths untracked.paths; do
-    [[ -f "$tx_dir/$payload" ]] || continue
-    mkdir -p -- "$legacy"
-    cp -- "$tx_dir/$payload" "$legacy/$payload"
-  done
-  return 0
-}
+tx_dir_read() { [[ -d "$(tx_dir_for "$1")" ]] && printf '%s' "$(tx_dir_for "$1")"; }
+backup_ref_for() { printf 'refs/%s/%s' "$BACKUP_REF_PREFIX" "$1"; }
 
 journal_write() {
-  local tx_dir="$1" phase="$2" tx_id legacy tmp
-  tx_id="$(basename "$tx_dir")"
+  local tx_dir="$1" phase="$2" tmp
+  local tx_id="$(basename "$tx_dir")"
   tmp="$tx_dir/.journal.tmp"
   printf '%s\n' "$phase" > "$tmp"
   mv -f -- "$tmp" "$tx_dir/journal"
-  legacy="$(legacy_mirror_dir "$tx_id")"
-  if [[ "$tx_dir" != "$legacy" && -d "$legacy" ]]; then printf '%s\n' "$phase" > "$legacy/.journal.tmp"; mv -f -- "$legacy/.journal.tmp" "$legacy/journal"; fi
-  if [[ "${FLOWTASK_TEST_MODE:-0}" == 1 && "${FLOWTASK_TEST_CRASH_AFTER:-}" == "$phase" ]]; then exit 99; fi
+  if [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 && "${WORKTREE_MANAGER_TEST_CRASH_AFTER:-}" == "$phase" ]]; then exit 99; fi
 }
 
 journal_read() { [[ -f "$1/journal" ]] && tr -d '\n' < "$1/journal"; }
@@ -335,7 +317,6 @@ write_meta() {
   tmp="$tx_dir/.meta.tmp"
   {
     printf 'work_id: %s\n' "$work_id"
-    printf 'ca_name: %s\n' "$work_id"
     printf 'base_branch: %s\n' "$base"
     printf 'branch: %s\n' "$branch"
     printf 'path: %s\n' "$path_abs"
@@ -344,8 +325,6 @@ write_meta() {
     printf 'created_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } > "$tmp"
   mv -f -- "$tmp" "$tx_dir/meta"
-  local legacy="$(legacy_mirror_dir "$(basename "$tx_dir")")"
-  if [[ "$tx_dir" != "$legacy" ]]; then mkdir -p -- "$legacy"; cp -- "$tx_dir/meta" "$legacy/meta"; fi
 }
 
 meta_value() { sed -n "s/^$2: //p" "$1/meta" | head -n 1; }
@@ -403,14 +382,14 @@ close_crash_hook() {
   # `create --init-submodules` shares the initialization helper, but must not
   # inherit complete-only crash injection.
   [[ "${CLOSE_OPERATION:-}" == complete ]] || return 0
-  [[ "${FLOWTASK_TEST_MODE:-0}" == 1 ]] || return 0
-  [[ "${FLOWTASK_TEST_CLOSE_CRASH_AFTER:-}" == "$1" ]] || return 0
+  [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 ]] || return 0
+  [[ "${WORKTREE_MANAGER_TEST_CLOSE_CRASH_AFTER:-}" == "$1" ]] || return 0
   exit 99
 }
 
 close_test_counter() {
-  [[ "${FLOWTASK_TEST_MODE:-0}" == 1 && -n "${FLOWTASK_TEST_COUNTER_FILE:-}" ]] || return 0
-  printf '%s\n' "$1" >> "$FLOWTASK_TEST_COUNTER_FILE"
+  [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 && -n "${WORKTREE_MANAGER_TEST_COUNTER_FILE:-}" ]] || return 0
+  printf '%s\n' "$1" >> "$WORKTREE_MANAGER_TEST_COUNTER_FILE"
 }
 
 valid_object_sha() {
@@ -639,7 +618,7 @@ capture_transaction() {
   if [[ -s "$tx_dir/tracked.paths" ]]; then
     TX_TRACKED_SHA="$(git stash create "worktree-manager-backup $tx_id")"
     [[ -n "$TX_TRACKED_SHA" ]] || { abort_capture_cleanup "$tx_id"; die "La captura del estado del destino falló; el cierre fue cancelado y no se modificó nada."; }
-    git update-ref "refs/flowtask/backups/$tx_id" "$TX_TRACKED_SHA"
+    git update-ref "$(backup_ref_for "$tx_id")" "$TX_TRACKED_SHA"
   fi
   if [[ -s "$tx_dir/untracked.paths" ]]; then
     tmp_index="$(mktemp "${TMPDIR:-/tmp}/worktree-manager-index.XXXXXX")"
@@ -648,7 +627,7 @@ capture_transaction() {
     tree_sha="$(GIT_INDEX_FILE="$tmp_index" git write-tree)"
     rm -f -- "$tmp_index"
     TX_UNTRACKED_SHA="$(git commit-tree "$tree_sha" -m "worktree-manager-backup-untracked $tx_id")"
-    git update-ref "refs/flowtask/backups/$tx_id-untracked" "$TX_UNTRACKED_SHA"
+    git update-ref "$(backup_ref_for "$tx_id-untracked")" "$TX_UNTRACKED_SHA"
   fi
   if [[ -n "$TX_TRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_TRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."; }; done < "$tx_dir/tracked.paths"; fi
   if [[ -n "$TX_UNTRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_UNTRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."; }; done < "$tx_dir/untracked.paths"; fi
@@ -656,9 +635,9 @@ capture_transaction() {
 
 abort_capture_cleanup() {
   local tx_id="$1"
-  git update-ref -d "refs/flowtask/backups/$tx_id" >/dev/null 2>&1 || true
-  git update-ref -d "refs/flowtask/backups/$tx_id-untracked" >/dev/null 2>&1 || true
-  rm -rf -- "$(tx_dir_for "$tx_id")" "$(legacy_tx_dir_for "$tx_id")"
+  git update-ref -d "$(backup_ref_for "$tx_id")" >/dev/null 2>&1 || true
+  git update-ref -d "$(backup_ref_for "$tx_id-untracked")" >/dev/null 2>&1 || true
+  rm -rf -- "$(tx_dir_for "$tx_id")"
 }
 
 clean_destination() {
@@ -684,23 +663,24 @@ merge_squash_branch() {
 restore_transaction() {
   local tx_id="$1" tx_dir="$2" path collision=0
   if [[ -n "${TX_TRACKED_SHA:-}" ]]; then
-    git stash apply --index "refs/flowtask/backups/$tx_id" >/dev/null 2>&1 || { mark_pending_manual "$tx_dir" "$tx_id"; return 1; }
+    git stash apply --index "$(backup_ref_for "$tx_id")" >/dev/null 2>&1 || { mark_pending_manual "$tx_dir" "$tx_id"; return 1; }
   fi
   if [[ -n "${TX_UNTRACKED_SHA:-}" ]]; then
-    while IFS= read -r -d '' path; do if [[ -e "$path" || -L "$path" ]]; then collision=1; break; fi; done < <(git ls-tree -r -z --name-only "refs/flowtask/backups/$tx_id-untracked")
+    while IFS= read -r -d '' path; do if [[ -e "$path" || -L "$path" ]]; then collision=1; break; fi; done < <(git ls-tree -r -z --name-only "$(backup_ref_for "$tx_id-untracked")")
     if (( collision )); then mark_pending_manual "$tx_dir" "$tx_id"; return 1; fi
-    while IFS= read -r -d '' path; do git restore --source="refs/flowtask/backups/$tx_id-untracked" --worktree -- "./$path" >/dev/null 2>&1 || { mark_pending_manual "$tx_dir" "$tx_id"; return 1; }; done < <(git ls-tree -r -z --name-only "refs/flowtask/backups/$tx_id-untracked")
+    while IFS= read -r -d '' path; do git restore --source="$(backup_ref_for "$tx_id-untracked")" --worktree -- "./$path" >/dev/null 2>&1 || { mark_pending_manual "$tx_dir" "$tx_id"; return 1; }; done < <(git ls-tree -r -z --name-only "$(backup_ref_for "$tx_id-untracked")")
   fi
 }
 
 print_pending_manual_instructions() {
   local tx_id="$1"
+  local tracked_ref="$(backup_ref_for "$tx_id")" untracked_ref="$(backup_ref_for "$tx_id-untracked")"
   cat >&2 <<EOF
 La restauración automática falló; la transacción $tx_id quedó pendiente-manual.
 La fusión quedó aplicada y el backup permanece intacto; nada fue descartado.
 Pasos seguros para resolverlo vos mismo (reemplazá solo el identificador):
-  git stash apply --index refs/flowtask/backups/$tx_id
-  git restore --source=refs/flowtask/backups/$tx_id-untracked --worktree -- .
+  git stash apply --index $tracked_ref
+  git restore --source=$untracked_ref --worktree -- .
 Inspeccioná el resultado con 'git status' antes de seguir.
 EOF
 }
@@ -708,7 +688,7 @@ mark_pending_manual() { journal_write "$1" pending_manual; print_pending_manual_
 
 latest_pending_tx_id() {
   local d phase found=() i
-  for d in "$TRANSACTIONS_DIR"/*/ "$REPO_ROOT/.flowtask/backups"/*/; do
+  for d in "$TRANSACTIONS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     phase="$(journal_read "$d" || true)"
     [[ "$phase" != restored && -n "$phase" ]] && found+=("$d")
@@ -729,7 +709,6 @@ parse_destination_status() {
   while IFS= read -r -d '' rec; do
     code="${rec:0:2}"; path="${rec:3}"
     case "$code" in R?|C?) IFS= read -r -d '' rec || true ;; esac
-    [[ "$path" == .flowtask/backups/* ]] && continue
     if [[ "$code" == '??' ]]; then DEST_UNTRACKED=1; printf '%s\0' "$path" >> "$TMP_STATE_DIR/dest.untracked"; else
       [[ "${code:0:1}" != " " ]] && DEST_STAGED=1
       [[ "${code:1:1}" != " " ]] && DEST_UNSTAGED=1
@@ -747,7 +726,7 @@ detect_unsupported() {
     [[ -z "${fields[2]:-}" || "${fields[2]}" == unspecified ]] || { unsupported+="filters "; break; }
   done < "$tracked_list"
   [[ -z "$unsupported" ]] || { printf 'Aviso: setup no soportado para preservar cambios: %s\n' "${unsupported% }" >&2; return 1; }
-  if [[ -n "$(git ls-files --others --ignored --exclude-standard --directory | grep -v '^\.flowtask/backups/\?$' || true)" ]]; then printf '%s\n' "Aviso: hay archivos ignorados en el destino; quedan fuera de la captura y no serán tocados." >&2; fi
+  if [[ -n "$(git ls-files --others --ignored --exclude-standard --directory || true)" ]]; then printf '%s\n' "Aviso: hay archivos ignorados en el destino; quedan fuera de la captura y no serán tocados." >&2; fi
 }
 
 # A declared submodule is not part of the parent's dirty payload when it is
@@ -791,16 +770,16 @@ preserve_submodules_clean() {
 
 consent_preserve_dirty() {
   [[ "${1:-0}" == 1 || "$PRESERVE_DIRTY" == 1 ]] && return 0
-  [[ -f "$REPO_ROOT/.flowtask/config/worktree.json" ]] && grep -Eq '"preserveDirty"[[:space:]]*:[[:space:]]*true' "$REPO_ROOT/.flowtask/config/worktree.json"
+  return 1
 }
 
 complete_has_other_pending_transaction() {
   local expected_work_id="$1" d phase tx_work
-  for d in "$TRANSACTIONS_DIR"/*/ "$REPO_ROOT/.flowtask/backups"/*/; do
+  for d in "$TRANSACTIONS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     phase="$(journal_read "$d" || true)"
     case "$phase" in restored|pending_manual|"") continue ;; esac
-    tx_work="$(meta_value "$d" work_id)"; [[ -n "$tx_work" ]] || tx_work="$(meta_value "$d" ca_name)"
+    tx_work="$(meta_value "$d" work_id)"
     [[ "$tx_work" == "$expected_work_id" ]] || die "Existe una transacción de preservación pendiente ($(basename "$d"), fase $phase). Ejecutá 'worktree.sh recover $(basename "$d")' antes de reintentar el cierre."
   done
 }
@@ -808,12 +787,12 @@ complete_has_other_pending_transaction() {
 complete_blocks_pending_manual() {
   local expected_work_id="$1" expected_branch="$2" expected_path="$3"
   local d phase tx_id tx_work tx_branch tx_path
-  for d in "$TRANSACTIONS_DIR"/*/ "$REPO_ROOT/.flowtask/backups"/*/; do
+  for d in "$TRANSACTIONS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     phase="$(journal_read "$d" || true)"
     [[ "$phase" == pending_manual ]] || continue
     tx_id="$(basename "$d")"
-    tx_work="$(meta_value "$d" work_id)"; [[ -n "$tx_work" ]] || tx_work="$(meta_value "$d" ca_name)"
+    tx_work="$(meta_value "$d" work_id)"
     tx_branch="$(meta_value "$d" branch)"
     tx_path="$(meta_value "$d" path)"
     if [[ "$tx_work" == "$expected_work_id" || ( "$tx_branch" == "$expected_branch" && "$tx_path" == "$expected_path" ) ]]; then
@@ -824,11 +803,11 @@ complete_blocks_pending_manual() {
 
 close_pending_transaction_for() {
   local work_id="$1" d phase tx_work
-  for d in "$TRANSACTIONS_DIR"/*/ "$REPO_ROOT/.flowtask/backups"/*/; do
+  for d in "$TRANSACTIONS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     phase="$(journal_read "$d" || true)"
     case "$phase" in restored|pending_manual|"") continue ;; esac
-    tx_work="$(meta_value "$d" work_id)"; [[ -n "$tx_work" ]] || tx_work="$(meta_value "$d" ca_name)"
+    tx_work="$(meta_value "$d" work_id)"
     [[ "$tx_work" == "$work_id" ]] && { printf '%s\n' "$(basename "$d")"; return 0; }
   done
   return 1
@@ -836,11 +815,11 @@ close_pending_transaction_for() {
 
 close_restored_transaction_for() {
   local work_id="$1" d phase tx_work
-  for d in "$TRANSACTIONS_DIR"/*/ "$REPO_ROOT/.flowtask/backups"/*/; do
+  for d in "$TRANSACTIONS_DIR"/*/; do
     [[ -d "$d" ]] || continue
     phase="$(journal_read "$d" || true)"
     [[ "$phase" == restored ]] || continue
-    tx_work="$(meta_value "$d" work_id)"; [[ -n "$tx_work" ]] || tx_work="$(meta_value "$d" ca_name)"
+    tx_work="$(meta_value "$d" work_id)"
     [[ "$tx_work" == "$work_id" ]] && { printf '%s\n' "$(basename "$d")"; return 0; }
   done
   return 1
@@ -997,9 +976,8 @@ complete_worktree() {
       tx_id="$(close_pending_transaction_for "$work_id" || true)"
       if [[ -z "$tx_id" ]]; then
         tx_id="$(date -u +%Y%m%dT%H%M%SZ)-$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')"
-        tx_dir="$(tx_dir_for "$tx_id")"; mkdir -p -- "$tx_dir" "$(legacy_mirror_dir "$tx_id")"
+        tx_dir="$(tx_dir_for "$tx_id")"; mkdir -p -- "$tx_dir"
         cp -- "$TMP_STATE_DIR/dest.tracked" "$tx_dir/tracked.paths"; cp -- "$TMP_STATE_DIR/dest.untracked" "$tx_dir/untracked.paths"
-        mirror_tx_payload "$tx_dir"
         write_meta "$tx_dir" "$work_id" "$base" "$CLOSE_BRANCH" "$CLOSE_PATH" "$CLOSE_ORIGIN_SHA"
         capture_transaction "$tx_id" "$tx_dir"; journal_write "$tx_dir" captured
       else tx_dir="$(tx_dir_read "$tx_id")"; fi
@@ -1020,7 +998,7 @@ complete_worktree() {
     tx_id="$(close_pending_transaction_for "$work_id" || true)"
     if [[ -n "$tx_id" ]]; then
       tx_dir="$(tx_dir_read "$tx_id")"
-      TX_TRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id" || true)"; TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id-untracked" || true)"
+      TX_TRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id")" || true)"; TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id-untracked")" || true)"
       restore_transaction "$tx_id" "$tx_dir" || { CLOSE_PARENT_RESTORE=pending_manual; close_write_meta; return 1; }
       journal_write "$tx_dir" restored
       status_after="$(git status --porcelain --untracked-files=all)"
@@ -1094,7 +1072,7 @@ recover_transaction() {
   local tx_dir phase work_id base branch path_abs origin_sha squash before
   tx_dir="$(tx_dir_read "$tx_id")" || die "No existe la transacción '$tx_id'"
   phase="$(journal_read "$tx_dir" || true)"; case "$phase" in captured|merge_started|merged|pending_manual|restored) ;; *) die "La transacción '$tx_id' no tiene un journal válido" ;; esac
-  work_id="$(meta_value "$tx_dir" work_id)"; [[ -n "$work_id" ]] || work_id="$(meta_value "$tx_dir" ca_name)"; base="$(meta_value "$tx_dir" base_branch)"; branch="$(meta_value "$tx_dir" branch)"; path_abs="$(meta_value "$tx_dir" path)"; origin_sha="$(meta_value "$tx_dir" origin_sha)"; squash="$(meta_value "$tx_dir" squash_commit)"
+  work_id="$(meta_value "$tx_dir" work_id)"; base="$(meta_value "$tx_dir" base_branch)"; branch="$(meta_value "$tx_dir" branch)"; path_abs="$(meta_value "$tx_dir" path)"; origin_sha="$(meta_value "$tx_dir" origin_sha)"; squash="$(meta_value "$tx_dir" squash_commit)"
   validate_work_id "$work_id"
   # Discrepancia bajo lock: el candidato cambió mientras esperábamos el recurso.
   [[ "$work_id" == "$expected_work_id" ]] || die "La transacción '$tx_id' cambió de identidad mientras se tomaban los locks; no toco nada"
@@ -1108,7 +1086,7 @@ recover_transaction() {
     before="$(git rev-parse HEAD)"; merge_squash_branch "$base" "$branch" "$before" || { git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true; journal_write "$tx_dir" merge_started; die "Conflicto al reintentar la fusión para '$tx_id'; la transacción sigue en fase merge_started."; }
     squash="$SQUASH_SHA"; printf 'squash_commit: %s\n' "$squash" >> "$tx_dir/meta"; journal_write "$tx_dir" merged
   fi
-  TX_TRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id" || true)"; TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id-untracked" || true)"
+  TX_TRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id")" || true)"; TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id-untracked")" || true)"
   restore_transaction "$tx_id" "$tx_dir" || return 1
   journal_write "$tx_dir" restored
   # B1: the verified squash-close capability is deliberately NOT reachable from
@@ -1171,7 +1149,7 @@ prune_worktrees() {
   printf 'operation: prune\nresult: success\npruned: %s\n' "$orphan_count"
 }
 
-# CA2 target-direct implementation is isolated from the parent-only lifecycle.
+# Target-direct is isolated from the parent-only lifecycle.
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/worktree-manager-target-direct.sh"
 
 usage() {
@@ -1184,9 +1162,9 @@ Uso:
   worktree.sh [globales] prune | list
 
   target-direct:
-  worktree.sh --repo <submodule> --parent-repo <parent> create <CA_ID> --target submodule --submodule-path <REL> --base <branch> --link-parent staged-only
-  worktree.sh --repo <submodule> --parent-repo <parent> link-parent <CA_ID> --target submodule --submodule-path <REL> --link-parent staged-only
-  worktree.sh --repo <submodule> --parent-repo <parent> abort <CA_ID> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
+  worktree.sh --repo <submodule> --parent-repo <parent> create <work-id> --target submodule --submodule-path <REL> --base <branch> --link-parent staged-only
+  worktree.sh --repo <submodule> --parent-repo <parent> link-parent <work-id> --target submodule --submodule-path <REL> --link-parent staged-only
+  worktree.sh --repo <submodule> --parent-repo <parent> abort <work-id> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
 
 La configuración es un archivo de datos key=value; nunca se ejecuta como shell.
 EOF
@@ -1232,7 +1210,7 @@ worktree_manager_main() {
       tx_dir="$(tx_dir_read "$tx_id")" || die "No existe la transacción '$tx_id'"
       # B2: resolve and validate the candidate work id BEFORE locking so the same
       # locks as `complete`/`cleanup --discard` can be taken lexicographically.
-      work_id="$(meta_value "$tx_dir" work_id)"; [[ -n "$work_id" ]] || work_id="$(meta_value "$tx_dir" ca_name)"
+      work_id="$(meta_value "$tx_dir" work_id)"
       validate_work_id "$work_id"
       acquire_locks recover destination "work/$(encode_work_id "$work_id")"
       trap release_locks EXIT

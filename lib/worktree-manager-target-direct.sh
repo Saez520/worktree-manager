@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CA2 only: explicit submodule target lifecycle.  This file deliberately does
+# Explicit submodule target lifecycle. This file deliberately does
 # not call the parent-only cleanup/complete implementation.
 
 target_direct_sha256() {
@@ -53,14 +53,14 @@ target_direct_lock_one() {
   printf '%s\n' "$$" > "$path/owner_pid"
   printf '%s\n' "$operation" > "$path/operation"
   printf '%s\n' "$now" > "$path/created_at"
-  printf '%s\n' "${TD_TX:-td-unknown}" > "$path/tx_id"
+  printf '%s\n' "${TD_TX:-wt-unknown}" > "$path/tx_id"
   TD_LOCKS+=("$path")
 }
 
 target_direct_acquire_locks() {
   local target_common="$1" parent_common="$2" operation="$3" state_root="$4"
   TD_LOCKS=()
-  # The ownership order is part of the CA2 contract: target then parent.
+  # The ownership order is part of the shared-resource contract: target then parent.
   target_direct_lock_one "$state_root/locks/target-$(target_direct_encode "$target_common")" "$operation" || return $?
   if [[ -n "$parent_common" ]]; then
     target_direct_lock_one "$state_root/locks/parent-$(target_direct_encode "$parent_common")" "$operation" || { target_direct_lock_release; return 5; }
@@ -70,20 +70,10 @@ target_direct_acquire_locks() {
 target_direct_write_descriptor() {
   local phase="$1" file="$TD_DIR/descriptor.tmp"; shift || true
   {
-    printf 'descriptor_version=1\noperation=%s\ntarget_kind=submodule\ntarget_repo=%s\ntarget_common_dir=%s\nparent_repo=%s\nparent_common_dir=%s\nsubmodule_path=%s\ngitlink_sha=%s\ntarget_head=%s\nbase=%s\nbase_sha=%s\nbranch=%s\nworktree_path=%s\nlink_parent=staged-only\nnamespace=CA-worktree-submodule-target-direct\nowner=%s\nphase=%s\ntx_id=%s\nindex_snapshot_ref=%s\n' \
+    printf 'descriptor_version=1\noperation=%s\ntarget_kind=submodule\ntarget_repo=%s\ntarget_common_dir=%s\nparent_repo=%s\nparent_common_dir=%s\nsubmodule_path=%s\ngitlink_sha=%s\ntarget_head=%s\nbase=%s\nbase_sha=%s\nbranch=%s\nworktree_path=%s\nlink_parent=staged-only\nowner=%s\nphase=%s\ntx_id=%s\nindex_snapshot_ref=%s\n' \
       "$TD_OPERATION" "$TD_TARGET" "$TD_TARGET_COMMON" "$TD_PARENT" "$TD_PARENT_COMMON" "$TD_SUBPATH" "$TD_GITLINK" "$TD_HEAD" "$TD_BASE" "$TD_BASE_SHA" "$TD_BRANCH" "$TD_WORKTREE" "$$" "$phase" "$TD_TX" "$TD_DIR/snapshot"
   } > "$file"
   mv -f -- "$file" "$TD_DIR/descriptor"
-}
-
-# Executable Runner -> Constructor boundary. The record is the only payload;
-# the Node transport validates, serializes and rehydrates it before returning
-# it to this shell Constructor. Never pass the in-memory shell state instead.
-target_direct_transport_constructor() {
-  local file="$1" tmp
-  tmp="${file}.transport.tmp"
-  node "$TD_TRANSPORT_MODULE" "$file" > "$tmp" || { rm -f -- "$tmp"; return 4; }
-  mv -f -- "$tmp" "$file"
 }
 
 target_direct_write_meta() {
@@ -106,7 +96,7 @@ target_direct_journal() {
       "$TD_ARGV" "$before" "$after" "${TD_EXPECTED_EFFECT:-none}" "${TD_OBSERVED_EFFECT:-none}" "$exit_code" "$now" "${TD_PRE_STATE:-unknown}" "${TD_POST_STATE:-unknown}"
   } > "$tmp"
   mv -f -- "$tmp" "$TD_DIR/journal"
-  if [[ "${FLOWTASK_TEST_MODE:-0}" == 1 && "${FLOWTASK_TEST_TARGET_CRASH_AFTER:-}" == "$after" ]]; then exit 99; fi
+  if [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 && "${WORKTREE_MANAGER_TEST_TARGET_CRASH_AFTER:-}" == "$after" ]]; then exit 99; fi
 }
 
 target_direct_snapshot() {
@@ -135,8 +125,8 @@ target_direct_classify() {
   index="$(git -C "$TD_PARENT" rev-parse --git-path index)"; [[ "$index" = /* ]] || index="$TD_PARENT/$index"
   nowhead="$(git -C "$TD_PARENT" rev-parse HEAD 2>/dev/null || true)"
   nowindex="$(target_direct_hash_file "$index" 2>/dev/null || true)"
-  nowdiff="$(mktemp "${TMPDIR:-/tmp}/td-diff.XXXXXX")"; git -C "$TD_PARENT" diff --cached --binary > "$nowdiff"
-  nowentry="$(mktemp "${TMPDIR:-/tmp}/td-entry.XXXXXX")"; git -C "$TD_PARENT" ls-files --stage -- "$TD_SUBPATH" > "$nowentry"
+  nowdiff="$(mktemp "${TMPDIR:-/tmp}/wt-diff.XXXXXX")"; git -C "$TD_PARENT" diff --cached --binary > "$nowdiff"
+  nowentry="$(mktemp "${TMPDIR:-/tmp}/wt-entry.XXXXXX")"; git -C "$TD_PARENT" ls-files --stage -- "$TD_SUBPATH" > "$nowentry"
   if [[ "$nowhead" == "$(cat "$s/head.sha")" && "$nowindex" == "$(cat "$s/index.sha256")" && "$(target_direct_hash_file "$nowdiff")" == "$(cat "$s/diff.sha256")" && "$(target_direct_hash_file "$nowentry")" == "$(cat "$s/entry.sha256")" ]]; then printf A;
   elif [[ "$nowhead" == "$(cat "$s/head.sha")" && "$(cat "$nowentry")" == "160000 $TD_HEAD"$' 0\t'"$TD_SUBPATH" && "$(git -C "$TD_PARENT" diff --cached --name-only)" == "$TD_SUBPATH" ]]; then printf B;
   else printf C; fi
@@ -158,13 +148,13 @@ target_direct_validate_descriptor() {
     key="${line%%=*}"; value="${line#*=}"
     [[ -n "$key" && -z "${seen[$key]+x}" && -n "$value" ]] || return 4
     case "$key" in
-      descriptor_version|operation|target_kind|target_repo|target_common_dir|parent_repo|parent_common_dir|submodule_path|gitlink_sha|target_head|base|base_sha|branch|worktree_path|link_parent|namespace|owner|phase|tx_id|index_snapshot_ref) ;;
+      descriptor_version|operation|target_kind|target_repo|target_common_dir|parent_repo|parent_common_dir|submodule_path|gitlink_sha|target_head|base|base_sha|branch|worktree_path|link_parent|owner|phase|tx_id|index_snapshot_ref) ;;
       *) return 4 ;;
     esac
     seen["$key"]=1
   done < "$file"
   local required
-  for required in descriptor_version operation target_kind target_repo target_common_dir parent_repo parent_common_dir submodule_path gitlink_sha target_head base base_sha branch worktree_path link_parent namespace owner phase tx_id index_snapshot_ref; do
+  for required in descriptor_version operation target_kind target_repo target_common_dir parent_repo parent_common_dir submodule_path gitlink_sha target_head base base_sha branch worktree_path link_parent owner phase tx_id index_snapshot_ref; do
     [[ -n "${seen[$required]+x}" ]] || return 4
   done
   [[ "$(sed -n 's/^descriptor_version=//p' "$file")" == 1 && "$(sed -n 's/^target_kind=//p' "$file")" == submodule && "$(sed -n 's/^link_parent=//p' "$file")" == staged-only ]] || return 4
@@ -173,7 +163,7 @@ target_direct_validate_descriptor() {
   [[ "$(sed -n 's/^target_repo=//p' "$file")" = /* && "$(sed -n 's/^target_common_dir=//p' "$file")" = /* && "$(sed -n 's/^parent_repo=//p' "$file")" = /* && "$(sed -n 's/^parent_common_dir=//p' "$file")" = /* && "$(sed -n 's/^worktree_path=//p' "$file")" = /* && "$(sed -n 's/^index_snapshot_ref=//p' "$file")" = /* ]] || return 4
   target_direct_valid_rel "$(sed -n 's/^submodule_path=//p' "$file")" || return 4
   [[ "$(sed -n 's/^gitlink_sha=//p' "$file")" =~ ^[0-9a-fA-F]{40}$ && "$(sed -n 's/^target_head=//p' "$file")" =~ ^[0-9a-fA-F]{40}$ && "$(sed -n 's/^base_sha=//p' "$file")" =~ ^[0-9a-fA-F]{40}$ ]] || return 4
-  [[ "$(sed -n 's/^tx_id=//p' "$file")" == td-* && "$(sed -n 's/^namespace=//p' "$file")" == CA-worktree-submodule-target-direct ]] || return 4
+  [[ "$(sed -n 's/^tx_id=//p' "$file")" == wt-*  ]] || return 4
 }
 
 target_direct_load_descriptor() {
@@ -189,7 +179,7 @@ target_direct_load_descriptor() {
   done < "$file"
   [[ "$TD_TARGET" == "$(target_direct_abs "$TD_TARGET")" && "$TD_PARENT" == "$(target_direct_abs "$TD_PARENT")" ]] || return 4
   [[ "$TD_TARGET_COMMON" == "$(target_direct_git_common "$TD_TARGET")" && "$TD_PARENT_COMMON" == "$(target_direct_git_common "$TD_PARENT")" ]] || return 4
-  [[ "$TD_WORKTREE" == "$TD_TARGET/.worktrees/${TD_TX#td-}" && "$TD_BRANCH" == "worktree/${TD_TX#td-}" ]] || return 4
+  [[ "$TD_WORKTREE" == "$TD_TARGET/.worktrees/${TD_TX#wt-}" && "$TD_BRANCH" == "worktree/${TD_TX#wt-}" ]] || return 4
   TD_DESC_TARGET="$TD_TARGET"; TD_DESC_TARGET_COMMON="$TD_TARGET_COMMON"; TD_DESC_PARENT="$TD_PARENT"; TD_DESC_PARENT_COMMON="$TD_PARENT_COMMON"
   TD_DESC_SUBPATH="$TD_SUBPATH"; TD_DESC_GITLINK="$TD_GITLINK"; TD_DESC_HEAD="$TD_HEAD"; TD_DESC_BASE_SHA="$TD_BASE_SHA"
   return 0
@@ -210,8 +200,8 @@ target_direct_validate_repo() {
   TD_HEAD="$repo_head"
   if [[ "${TD_OPERATION:-create}" != create && -n "${TD_BRANCH:-}" ]] && git -C "$TD_TARGET" show-ref --verify --quiet "refs/heads/$TD_BRANCH"; then
     TD_HEAD="$(git -C "$TD_TARGET" rev-parse "refs/heads/$TD_BRANCH")"
-  elif [[ "${TD_OPERATION:-create}" != create && -d "$TD_TARGET/.worktrees/${ca:-}" ]]; then
-    TD_HEAD="$(git -C "$TD_TARGET/.worktrees/${ca:-}" rev-parse HEAD 2>/dev/null || printf '%s' "$repo_head")"
+  elif [[ "${TD_OPERATION:-create}" != create && -d "$TD_TARGET/.worktrees/${work_id:-}" ]]; then
+    TD_HEAD="$(git -C "$TD_TARGET/.worktrees/${work_id:-}" rev-parse HEAD 2>/dev/null || printf '%s' "$repo_head")"
   fi
   if [[ "${TD_OPERATION:-create}" == complete && -d "${TD_DIR:-}/snapshot" ]]; then
     [[ "$TD_GITLINK" == "$TD_HEAD" ]] || return 4
@@ -221,7 +211,7 @@ target_direct_validate_repo() {
   elif (( ! complete_without_link )); then
     [[ "$TD_GITLINK" == "$repo_head" || "$TD_GITLINK" == "$TD_HEAD" ]] || return 4
   fi
-  if [[ "${TD_OPERATION:-create}" == complete && -n "${TD_DIR:-}" && -d "$TD_DIR/snapshot" ]]; then
+  if [[ "${TD_OPERATION:-create}" == complete && -n "${TD_DIR:-}" && -d "${TD_DIR:-}/snapshot" ]]; then
     [[ "$(git -C "$TD_PARENT" rev-parse HEAD 2>/dev/null)" == "$(cat "$TD_DIR/snapshot/head.sha" 2>/dev/null)" ]] || return 6
     [[ "$(git -C "$TD_PARENT" ls-files --stage -- "$TD_SUBPATH")" == "160000 $TD_HEAD"$' 0\t'"$TD_SUBPATH" ]] || return 6
     [[ "$(git -C "$TD_PARENT" diff --cached --name-only)" == "$TD_SUBPATH" ]] || return 6
@@ -317,62 +307,60 @@ target_direct_main() {
     esac
   done
   (( explicit_target )) || return 10
-  local target_repo="" parent_repo="" command ca tx="" target_kind="" subpath="" link="" base="main" base_seen=0 tx_seen=0 arg
+  local target_repo="" parent_repo="" command work_id tx="" target_kind="" subpath="" link="" base="main" base_seen=0 tx_seen=0 arg
   while [[ $# -gt 0 ]]; do case "$1" in --repo) [[ $# -ge 2 ]] || return 2; target_repo="$2"; shift 2;; --parent-repo) [[ $# -ge 2 ]] || return 2; parent_repo="$2"; shift 2;; *) break;; esac; done
   [[ -n "$target_repo" && -n "$parent_repo" ]] || return 2; command="${1:-}"; shift || true
   target_direct_ensure_git || return $?
   local script_dir; script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-  TD_TRANSPORT_MODULE="$script_dir/../../bin/lib/runner-constructor-target-direct.js"
-  case "$command" in create|link-parent|abort|complete) ca="${1:-}"; shift || true;; recover) tx="${1:-}"; shift || true;; *) return 10;; esac
-  [[ -n "${ca:-$tx}" ]] || return 2
+  TD_TRANSPORT_MODULE=""
+  case "$command" in create|link-parent|abort|complete) work_id="${1:-}"; shift || true;; recover) tx="${1:-}"; shift || true;; *) return 10;; esac
+  [[ -n "${work_id:-$tx}" ]] || return 2
   while [[ $# -gt 0 ]]; do arg="$1"; case "$arg" in --target) target_kind="${2:-}"; shift 2;; --submodule-path) subpath="${2:-}"; shift 2;; --base) base="${2:-}"; base_seen=1; shift 2;; --link-parent) link="${2:-}"; shift 2;; --tx) tx="${2:-}"; tx_seen=1; shift 2;; *) printf '%s\n' "Opción o argumento desconocido: $arg" >&2; return 2;; esac; done
   if [[ "$command" == recover ]]; then target_kind=submodule; fi
   [[ "$command" == create || "$base_seen" == 0 ]] || { [[ "$command" == complete ]] || return 2; }
   [[ "$command" == abort || "$tx_seen" == 0 ]] || return 2
   if [[ "$command" != recover ]]; then [[ "$target_kind" == submodule && -n "$subpath" && "$link" == staged-only ]] || return 2; target_direct_valid_rel "$subpath" || return 3; fi
-  [[ "${ca:-}" != */* && "${ca:-}" != .* && "${ca:-}" != -* ]] || { [[ "$command" == recover ]] || return 3; }
+  [[ "${work_id:-}" != */* && "${work_id:-}" != .* && "${work_id:-}" != -* ]] || { [[ "$command" == recover ]] || return 3; }
   local state_root descriptor_path
   TD_BASE="$base"; TD_SUBPATH="$subpath"
   if [[ "$command" == recover ]]; then
-    local recover_target recover_common recover_dir recover_ca
+    local recover_target recover_common recover_dir recover_work_id
     recover_target="$(target_direct_abs "$target_repo")" || return 3
     recover_common="$(target_direct_git_common "$recover_target")" || return 3
-    recover_ca="${tx#td-}"
-    recover_dir="$recover_common/worktree-manager/target-direct/$(target_direct_encode "$recover_ca")"
+    recover_work_id="${tx#wt-}"
+    recover_dir="$recover_common/worktree-manager/target-direct/$(target_direct_encode "$recover_work_id")"
     descriptor_path="$recover_dir/descriptor"
     [[ -f "$descriptor_path" ]] || return 4
-    target_direct_transport_constructor "$descriptor_path" || return 4
-    target_direct_load_descriptor "$descriptor_path" || return 4
+        target_direct_load_descriptor "$descriptor_path" || return 4
     [[ "$TD_TARGET" == "$recover_target" ]] || return 4
     [[ "$TD_PARENT" == "$(target_direct_abs "$parent_repo")" ]] || return 4
     [[ "$TD_TX" == "$tx" ]] || return 4
     TD_SUBPATH="$(sed -n 's/^submodule_path=//p' "$descriptor_path")"
     [[ -n "$TD_SUBPATH" ]] || return 4
-    ca="$(sed -n 's/^tx_id=td-//p' "$descriptor_path")"
-    [[ -n "$ca" ]] || ca="$(sed -n 's/^tx_id=td-//p' "$recover_dir/meta")"
-    [[ -n "$ca" ]] || return 4
+    work_id="$(sed -n 's/^tx_id=wt-//p' "$descriptor_path")"
+    [[ -n "$work_id" ]] || work_id="$(sed -n 's/^tx_id=wt-//p' "$recover_dir/meta")"
+    [[ -n "$work_id" ]] || return 4
     base="$(sed -n 's/^base=//p' "$descriptor_path")"
   fi
   TD_OPERATION="$command"
   TD_TARGET="$(target_direct_abs "$target_repo")" || return 3
   TD_TARGET_COMMON="$(target_direct_git_common "$TD_TARGET")" || return 3
   state_root="$TD_TARGET_COMMON/worktree-manager/target-direct"
-  TD_DIR="$state_root/$(target_direct_encode "${ca:-$tx}")"
-  TD_TX="${tx:-td-$ca}"
-  [[ "$TD_TX" == td-* ]] || TD_TX="td-$TD_TX"
-  TD_BRANCH="worktree/$ca"
-  TD_WORKTREE="$TD_TARGET/.worktrees/$ca"
+  TD_DIR="$state_root/$(target_direct_encode "${work_id:-$tx}")"
+  TD_TX="${tx:-wt-$work_id}"
+  [[ "$TD_TX" == wt-* ]] || TD_TX="wt-$TD_TX"
+  TD_BRANCH="worktree/$work_id"
+  TD_WORKTREE="$TD_TARGET/.worktrees/$work_id"
   # complete must validate the staged-only result recorded by link-parent,
   # rather than comparing the parent gitlink with the target repository's
   # unrelated current branch tip.
   if [[ "$command" == complete ]]; then
     [[ -f "$TD_DIR/meta" ]] || return 4
-    target_direct_transport_constructor "$TD_DIR/descriptor" || return 4
-    target_direct_load_descriptor "$TD_DIR/descriptor" || return 4
+        target_direct_load_descriptor "$TD_DIR/descriptor" || return 4
     TD_OPERATION="$command"
   fi
   target_direct_validate_repo "$target_repo" "$parent_repo" || return $?
-  TD_OPERATION="$command"; TD_OPERATION_ID="$TD_TX"; TD_ARGV="$command ${ca:-$tx} --target submodule --submodule-path $TD_SUBPATH --link-parent staged-only"; [[ "$base_seen" == 1 ]] && TD_ARGV="$TD_ARGV --base $base"; [[ "$tx_seen" == 1 ]] && TD_ARGV="$TD_ARGV --tx $tx"; TD_ABORT_STATUS=active; TD_PHASE=initial; TD_PRE_STATE=validated; TD_POST_STATE=validated
+  TD_OPERATION="$command"; TD_OPERATION_ID="$TD_TX"; TD_ARGV="$command ${work_id:-$tx} --target submodule --submodule-path $TD_SUBPATH --link-parent staged-only"; [[ "$base_seen" == 1 ]] && TD_ARGV="$TD_ARGV --base $base"; [[ "$tx_seen" == 1 ]] && TD_ARGV="$TD_ARGV --tx $tx"; TD_ABORT_STATUS=active; TD_PHASE=initial; TD_PRE_STATE=validated; TD_POST_STATE=validated
   if [[ "$command" != create && -d "$TD_WORKTREE" ]]; then
     TD_HEAD="$(git -C "$TD_WORKTREE" rev-parse HEAD 2>/dev/null)" || return 4
   fi
@@ -382,18 +370,18 @@ target_direct_main() {
   case "$command" in
     create)
       [[ -n "$base" ]] || return 3; git -C "$TD_TARGET" check-ref-format --branch "$TD_BRANCH" >/dev/null 2>&1 || return 3; git -C "$TD_TARGET" show-ref --verify --quiet "refs/heads/$TD_BRANCH" && return 4; [[ ! -e "$TD_WORKTREE" ]] || return 4
-      TD_EXPECTED_EFFECT="target worktree created"; target_direct_write_descriptor validated; target_direct_transport_constructor "$TD_DIR/descriptor" || return 4; target_direct_write_meta validated; target_direct_journal descriptor_written
+      TD_EXPECTED_EFFECT="target worktree created"; target_direct_write_descriptor validated; target_direct_write_meta validated; target_direct_journal descriptor_written
       git -C "$TD_TARGET" worktree add -b "$TD_BRANCH" "$TD_WORKTREE" "$TD_BASE" >/dev/null || { TD_POST_STATE=create_failed; target_direct_journal blocked 6; return 6; }
       TD_OBSERVED_EFFECT="target worktree created"; target_direct_journal worktree_created; target_direct_journal ready
       printf 'operation: create\nresult: success\nparent_worktree: none\nworktree: %s\nbranch: %s\n' "$TD_WORKTREE" "$TD_BRANCH";;
     link-parent)
-      [[ -f "$TD_DIR/meta" ]] || return 4; target_direct_transport_constructor "$TD_DIR/descriptor" || return 4; target_direct_validate_repo "$target_repo" "$parent_repo" || return 4; target_direct_snapshot; TD_EXPECTED_EFFECT="parent gitlink staged-only"; target_direct_journal snapshot_captured
+      [[ -f "$TD_DIR/meta" ]] || return 4; target_direct_validate_repo "$target_repo" "$parent_repo" || return 4; target_direct_snapshot; TD_EXPECTED_EFFECT="parent gitlink staged-only"; target_direct_journal snapshot_captured
       git -C "$TD_PARENT" update-index --add --cacheinfo "160000,$TD_HEAD,$TD_SUBPATH" || { TD_POST_STATE=stage_failed; target_direct_journal blocked 6; return 6; }; TD_GITLINK="$TD_HEAD"; TD_OBSERVED_EFFECT="gitlink staged"; target_direct_journal staged_started; target_direct_journal staged; TD_POST_STATE=verified; target_direct_journal verified
       printf 'operation: link-parent\nresult: success\nlink_parent: staged-only\ngitlink_sha: %s\n' "$TD_HEAD";;
     abort)
-      [[ -f "$TD_DIR/meta" ]] || return 4; target_direct_transport_constructor "$TD_DIR/descriptor" || return 4; [[ -z "$tx" || "$tx" == "$TD_TX" ]] || return 4
+      [[ -f "$TD_DIR/meta" ]] || return 4; [[ -z "$tx" || "$tx" == "$TD_TX" ]] || return 4
       if [[ ! -d "$TD_DIR/snapshot" ]]; then TD_ABORT_STATUS=aborted; target_direct_journal aborted; printf 'operation: abort\nresult: success\nclassification: A\n'; else local c="$(target_direct_classify)"; [[ "$c" == A || "$c" == B ]] || { TD_POST_STATE=drift; target_direct_journal blocked 6; return 6; }; target_direct_journal index_reconcile_started; target_direct_restore_index || { TD_POST_STATE=restore_failed; target_direct_journal blocked 6; return 6; }; TD_ABORT_STATUS=aborted; TD_OBSERVED_EFFECT="parent index restored"; target_direct_journal index_restored; target_direct_journal aborted; printf 'operation: abort\nresult: success\nclassification: %s\n' "$c"; fi;;
-    complete) target_direct_transport_constructor "$TD_DIR/descriptor" || return 4; target_direct_complete;;
+    complete) target_direct_complete;;
     recover) target_direct_recover;;
   esac
 }
