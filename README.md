@@ -1,8 +1,7 @@
 # Gestor de worktrees
 
 Gestor Bash standalone para crear, completar, limpiar y recuperar worktrees de
-un repositorio Git. El proyecto no conoce FlowTask ni depende de sus rutas,
-refs heredadas o mecanismos de coordinación.
+un repositorio Git.
 
 ## Arquitectura
 
@@ -12,9 +11,8 @@ refs heredadas o mecanismos de coordinación.
 submodule. La configuración se valida como datos `key=value`, nunca como
 código shell.
 
-El instalador o consumidor que integre este repositorio debe materializarlo
-como una única fuente de implementación. No se deben mantener copias
-alternativas del core o del módulo target-direct.
+El gestor mantiene una única implementación del core y del módulo target-direct;
+no se deben mantener copias alternativas de ninguno de ellos.
 
 ## Configuración y lifecycle
 
@@ -52,6 +50,5 @@ se encuentran en `tests/`.
 
 ## Distribución
 
-Este repositorio es la fuente de verdad del gestor. FlowTask lo integra como
-submodule y añade únicamente un adaptador de compatibilidad; la documentación
-de esa integración vive en el repositorio consumidor.
+Este repositorio contiene la implementación completa del gestor y su
+documentación, incluidos el contrato de la CLI y las pruebas ejecutables.
