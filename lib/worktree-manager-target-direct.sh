@@ -261,7 +261,7 @@ target_direct_recover() {
   local phase c
   phase="$(sed -n 's/^phase=//p' "$TD_DIR/meta")"
   target_direct_load_descriptor "$TD_DIR/descriptor" || { TD_POST_STATE=descriptor_invalid; target_direct_journal blocked 4; return 4; }
-  case "$phase" in aborted|blocked|closed)
+  case "$phase" in aborted|blocked|closed|recovered)
     printf 'operation: recover\nresult: success\nclassification: A\n'; return 0;;
     verified|staged|staged_started|snapshot_captured)
     if [[ -d "$TD_DIR/snapshot" ]]; then c="$(target_direct_classify)"; [[ "$c" == A || "$c" == B ]] || { TD_POST_STATE=drift; target_direct_journal blocked 6; return 6; };
