@@ -1,54 +1,55 @@
-# Gestor de worktrees
+# Worktree Manager
 
-Gestor Bash standalone para crear, completar, limpiar y recuperar worktrees de
-un repositorio Git.
+Standalone Bash manager for creating, completing, cleaning up, and recovering
+worktrees in a Git repository.
 
-## Arquitectura
+## Architecture
 
-`worktree.sh` es el entrypoint y delega el lifecycle parent-only a
-`lib/worktree-manager-core.sh`; el core carga
-`lib/worktree-manager-target-direct.sh` para operar directamente sobre un
-submodule. La configuración se valida como datos `key=value`, nunca como
-código shell.
+`worktree.sh` is the entrypoint and delegates the parent-only lifecycle to
+`lib/worktree-manager-core.sh`; the core loads
+`lib/worktree-manager-target-direct.sh` to operate directly on a
+submodule. Configuration is validated as `key=value` data, never as shell
+code.
 
-El gestor mantiene una única implementación del core y del módulo target-direct;
-no se deben mantener copias alternativas de ninguno de ellos.
+The manager maintains a single implementation of the core and the
+target-direct module; alternative copies of either must not be maintained.
 
-## Configuración y lifecycle
+## Configuration and lifecycle
 
-La configuración permite seleccionar `worktrees_dir`, `state_dir`,
-`backup_dir`, `backup_ref_prefix`, `branch_prefix` y `lock_dir`. Parent-only
-admite `create`, `complete`, `cleanup`, `recover`, `prune` y `list`, con locks,
-journals, recuperación y preservación explícita.
+Configuration allows selecting `worktrees_dir`, `state_dir`, `backup_dir`,
+`backup_ref_prefix`, `branch_prefix`, and `lock_dir`. Parent-only supports
+`create`, `complete`, `cleanup`, `recover`, `prune`, and `list`, with locks,
+journals, recovery, and explicit preservation.
 
-`complete` conserva recursos ante conflictos o drift. `cleanup` no integra;
-retirar cambios no integrados exige `--discard`. La preservación requiere
-opt-in y los conflictos de restauración quedan para intervención humana.
+`complete` preserves resources in the presence of conflicts or drift.
+`cleanup` does not integrate; removing unintegrated changes requires
+`--discard`. Preservation requires opt-in, and restoration conflicts are left
+for human intervention.
 
 ## Target-direct
 
-Target-direct opera sobre el repositorio submodule indicado: no crea un
-worktree del parent ni modifica su `HEAD`. Requiere identidad explícita de
-target/parent, ruta del submodule y `--link-parent staged-only`. `create`
-prepara el worktree del target; `link-parent` registra únicamente el gitlink;
-`abort`, `complete` y `recover` conservan snapshot y journal y se detienen ante
-drift ambiguo. Requiere exactamente Git 2.54.0.
+Target-direct operates on the specified submodule repository: it does not
+create a parent worktree or modify its `HEAD`. It requires explicit
+target/parent identity, the submodule path, and `--link-parent staged-only`.
+`create` prepares the target worktree; `link-parent` records only the gitlink;
+`abort`, `complete`, and `recover` preserve the snapshot and journal and stop
+on ambiguous drift. It requires exactly Git 2.54.0.
 
-## Uso
+## Usage
 
 ```text
 worktree.sh [--repo ABS] [--config ABS] create <id> [--base BRANCH]
-worktree.sh [globales] complete <id> [--preserve-dirty]
-worktree.sh [globales] cleanup <id> [--discard]
-worktree.sh [globales] recover [<transaction-id>]
-worktree.sh [globales] prune | list
+worktree.sh [global options] complete <id> [--preserve-dirty]
+worktree.sh [global options] cleanup <id> [--discard]
+worktree.sh [global options] recover [<transaction-id>]
+worktree.sh [global options] prune | list
 ```
 
-La interfaz target-direct y el contrato de salida JSON están documentados en
-[`docs/cli-contract-v1.md`](docs/cli-contract-v1.md). Las pruebas ejecutables
-se encuentran en `tests/`.
+The target-direct interface and JSON output contract are documented in
+[`docs/cli-contract-v1.md`](docs/cli-contract-v1.md). Executable tests are in
+`tests/`.
 
-## Distribución
+## Distribution
 
-Este repositorio contiene la implementación completa del gestor y su
-documentación, incluidos el contrato de la CLI y las pruebas ejecutables.
+This repository contains the manager's complete implementation and
+documentation, including the CLI contract and executable tests.
