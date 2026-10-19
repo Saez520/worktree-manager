@@ -73,8 +73,20 @@ class WorktreeLifecycle:
         status=self.git.run(('-C',str(path),'status','--porcelain','--untracked-files=all')).stdout
         commits=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False).stdout.strip() or '0'
         if (status or int(commits)>0) and not discard: raise ManagerError('intervention_required','Worktree has changes or commits; explicit discard consent is required',5)
-        self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
-        self.git.run(('branch','-D' if discard else '-d',branch))
+        locks=LockManager(self.state_root/self.config.lock_dir)
+        with locks:
+            locks.acquire([f'work/{self._lock_work_id(work_id)}'],'cleanup')
+            # The identity and mutable worktree state are checked again after
+            # lock acquisition; all expected rejection paths above precede the
+            # test-only barrier and any lock creation.
+            if str(path) not in {item['path'] for item in self.list()} or not path.exists():
+                raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
+            status=self.git.run(('-C',str(path),'status','--porcelain','--untracked-files=all')).stdout
+            commits=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False).stdout.strip() or '0'
+            if (status or int(commits)>0) and not discard:
+                raise ManagerError('intervention_required','Worktree has changes or commits; explicit discard consent is required',5)
+            self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
+            self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
     def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None)->dict[str,str]:
         """Squash a worktree branch and retire it only after verified success.
