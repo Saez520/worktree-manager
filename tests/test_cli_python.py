@@ -16,4 +16,19 @@ class PythonCliTests(unittest.TestCase):
             result=self.run_cli('--json','--repo',d,'list')
             self.assertEqual(result.returncode,0,result.stderr); doc=json.loads(result.stdout)
             self.assertEqual(doc['operation'],'list'); self.assertEqual(doc['result'],'success'); self.assertEqual(doc['data']['worktrees'][0]['branch'],'refs/heads/master')
+    def test_request_json_uses_mcp_contract_and_rejects_unknown_fields(self):
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(['git','init','-q',d],check=True)
+            subprocess.run(['git','-C',d,'-c','user.name=test','-c','user.email=test@example.invalid','commit','--allow-empty','-m','init'],check=True,capture_output=True)
+            request={'operation':'list','repo':d}
+            cli=self.run_cli('--request-json','-','--json')
+            cli=subprocess.run([sys.executable,'-m','worktree_manager','--request-json','-','--json'],input=json.dumps(request),text=True,capture_output=True)
+            self.assertEqual(cli.returncode,0,cli.stderr)
+            doc=json.loads(cli.stdout)
+            self.assertEqual(doc['operation'],'worktree_list')
+            self.assertEqual(doc['result'],'success')
+            bad=dict(request,unexpected=True)
+            rejected=subprocess.run([sys.executable,'-m','worktree_manager','--request-json','-','--json'],input=json.dumps(bad),text=True,capture_output=True)
+            self.assertEqual(rejected.returncode,3)
+            self.assertEqual(json.loads(rejected.stdout)['error']['code'],'invalid_request')
 if __name__=='__main__': unittest.main()

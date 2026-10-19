@@ -38,6 +38,9 @@ def main(argv=None)->int:
                 text=sys.stdin.read() if source=='-' else Path(source).read_text(encoding='utf-8')
                 request=json.loads(text)
                 if not isinstance(request,dict) or not isinstance(request.get('operation'),str): raise ValueError('operation_required')
+                # The protocol request is passed unchanged to the same strict
+                # validator and lifecycle façade used by MCP.
+                request=dict(request)
                 operation=request.pop('operation')
                 tool=operation if operation.startswith('worktree_') else 'worktree_'+operation
                 if tool not in TOOL_NAMES: raise ValueError('unknown_tool')
