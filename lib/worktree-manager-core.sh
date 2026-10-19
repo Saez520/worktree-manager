@@ -1165,14 +1165,12 @@ Uso:
   worktree.sh --repo <submodule> --parent-repo <parent> create <work-id> --target submodule --submodule-path <REL> --base <branch> --link-parent staged-only
   worktree.sh --repo <submodule> --parent-repo <parent> link-parent <work-id> --target submodule --submodule-path <REL> --link-parent staged-only
   worktree.sh --repo <submodule> --parent-repo <parent> abort <work-id> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
-  worktree.sh --repo <submodule> --parent-repo <parent> complete <work-id> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
-  worktree.sh --repo <submodule> --parent-repo <parent> recover [<transaction-id>] --target submodule --submodule-path <REL> --link-parent staged-only
 
 La configuración es un archivo de datos key=value; nunca se ejecuta como shell.
 EOF
 }
 
-worktree_manager_main_legacy() {
+worktree_manager_main() {
   local target_status
   target_direct_main "$@" || target_status=$?
   if [[ -n "${target_status:-}" && "$target_status" -ne 10 ]]; then exit "$target_status"; fi
@@ -1222,133 +1220,4 @@ worktree_manager_main_legacy() {
     ""|-h|--help|help) usage ;;
     *) die "Comando desconocido: $command" ;;
   esac
-}
-
-
-# Public metadata and output negotiation are kept outside the lifecycle dispatcher.
-WORKTREE_MANAGER_VERSION="1.0.0"
-json_quote() {
-  local value="$1"
-  value=${value//\\/\\\\}; value=${value//\"/\\\"}
-  value=${value//$'\n'/\\n}; value=${value//$'\r'/\\r}; value=${value//$'\t'/\\t}
-  printf '"%s"' "$value"
-}
-worktree_manager_main() {
-  local json=0 arg command status output error result operation code error_code stderr_file output_file line key value first usage_error=""
-  local -a args=()
-  # Validate the public command and global option envelope before dispatch can
-  # resolve a repository, load configuration, acquire locks, or create state.
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --json) json=1; shift ;;
-      --version|-V)
-        if [[ $# -ne 1 ]]; then usage_error='Opción --version no admite argumentos'; break; fi
-        printf '%s\n' "$WORKTREE_MANAGER_VERSION"; return 0 ;;
-      --repo|--config|--parent-repo)
-        if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then usage_error="Falta el valor de $1"; break; fi
-        args+=("$1" "$2"); shift 2 ;;
-      --) shift; args+=("$@"); break ;;
-      -h|--help|help) args+=("$1"); shift ;;
-      -*) usage_error="Opción global desconocida: $1"; break ;;
-      *) args+=("$1"); shift; args+=("$@"); break ;;
-    esac
-  done
-  if [[ -n "$usage_error" ]]; then
-    if (( json )); then
-      printf '{"contract_version":1,"tool_version":"%s","operation":"usage","result":"failure","data":{},"warnings":[],"error":{"code":"usage_error","message":' "$WORKTREE_MANAGER_VERSION"
-      json_quote "$usage_error"; printf ',"exit_code":2}}\n'
-    else printf '%s\n' "$usage_error" >&2; fi
-    return 2
-  fi
-  if [[ "${args[0]:-}" == --help || "${args[0]:-}" == -h || "${args[0]:-}" == help ]]; then usage; return 0; fi
-  command=""
-  local scan_index=0
-  while (( scan_index < ${#args[@]} )); do
-    arg="${args[scan_index]}"
-    case "$arg" in --repo|--config|--parent-repo) scan_index=$((scan_index+2)); continue;; esac
-    if [[ -z "$command" ]]; then command="$arg"; break; fi
-    scan_index=$((scan_index+1))
-  done
-  case "$command" in
-    create|complete|cleanup|recover|list|prune|link-parent|abort) ;;
-    *)
-      usage_error="Comando desconocido o faltante: ${command:-<faltante>}"
-      if (( json )); then
-        printf '{"contract_version":1,"tool_version":"%s","operation":"usage","result":"failure","data":{},"warnings":[],"error":{"code":"usage_error","message":' "$WORKTREE_MANAGER_VERSION"
-        json_quote "$usage_error"; printf ',"exit_code":2}}\n'
-      else printf '%s\n' "$usage_error" >&2; fi
-      return 2 ;;
-  esac
-  if (( ! json )); then worktree_manager_main_legacy "${args[@]}"; return $?; fi
-  command=""
-  for arg in "${args[@]}"; do
-    case "$arg" in --repo|--config|--parent-repo) continue;; esac
-    if [[ -z "$command" && "$arg" != /* ]]; then command="$arg"; fi
-  done
-  operation="$command"
-  stderr_file="$(mktemp)"; output_file="$(mktemp)"
-  if ( worktree_manager_main_legacy "${args[@]}" ) >"$output_file" 2>"$stderr_file"; then status=0; else status=$?; fi
-  output="$(cat "$output_file")"; error="$(cat "$stderr_file")"
-  rm -f "$stderr_file" "$output_file"
-  [[ -z "$error" ]] || printf '%s\n' "$error" >&2
-  code=0; result=success
-  if (( status != 0 )); then
-    result=failure
-    case "$error $output" in
-      *lock*|*ocupado*) code=4; error_code=resource_locked ;;
-      *conflict*|*conflicto*|*pending_manual*|*intervención*|*intervencion*) code=5; error_code=intervention_required; result=pending_intervention ;;
-      *permission*|*denied*|*permiso*) code=6; error_code=access_denied ;;
-      *dependencia*|*command\ not\ found*|*no\ se\ pudo\ ejecutar*) code=6; error_code=dependency_unavailable ;;
-      *identity*|*identidad*) code=3; error_code=identity_error ;;
-      *configuración*|*configuracion*|*config\ *) code=3; error_code=configuration_error ;;
-      *inválid*|*invalid*|*falta\ el\ valor*|*desconocid*) code=3; error_code=validation_error ;;
-      *) code=5; error_code=operation_failed ;;
-    esac
-  else error_code=""; fi
-  if [[ "$operation" == recover && "$output" == *"No hay transacciones"* ]]; then result=no_pending_work; fi
-  if [[ "$operation" == prune && "$output" == *"pruned: 0"* ]]; then result=no_pending_work; fi
-  local data='' first=1 json_value
-  # Convert the lifecycle's key/value records into typed operation data. The
-  # human formatter remains the core's output; it is never embedded in JSON.
-  while IFS= read -r line; do
-    [[ "$line" == *:* ]] || continue
-    key="${line%%:*}"; value="${line#*:}"; value="${value# }"
-    [[ "$key" =~ ^[a-z_]+$ ]] || continue
-    case "$key" in operation|result) continue ;; esac
-    case "$key" in
-      pruned|removed_worktree|removed_branch) json_value="$value" ;;
-      init_submodules|*) json_value="$(json_quote "$value")" ;;
-    esac
-    [[ "$key" == pruned || "$key" == removed_worktree || "$key" == removed_branch ]] && json_value="$value"
-    (( first )) || data+=','; first=0
-    data+="$(json_quote "$key"):$json_value"
-  done <<< "$output"
-  if [[ "$operation" == list && $status -eq 0 ]]; then
-    local worktrees_json='' wt_path='' wt_branch=''
-    while IFS= read -r line; do
-      case "$line" in
-        worktree\ *)
-          [[ -z "$wt_path" ]] || { (( first )) || data+=','; first=0; data+="\"worktrees\":[${worktrees_json%,}]"; worktrees_json=''; }
-          wt_path="${line#worktree }"; wt_branch='' ;;
-        branch\ *) wt_branch="${line#branch }" ;;
-        '')
-          [[ -n "$wt_path" ]] || continue
-          [[ -z "$worktrees_json" ]] || worktrees_json+=','
-          worktrees_json+="{\"path\":$(json_quote "$wt_path"),\"branch\":$(json_quote "$wt_branch")}"
-          wt_path='' ;;
-      esac
-    done <<< "$output"
-    if [[ -n "$wt_path" ]]; then
-      [[ -z "$worktrees_json" ]] || worktrees_json+=','
-      worktrees_json+="{\"path\":$(json_quote "$wt_path"),\"branch\":$(json_quote "$wt_branch")}"
-    fi
-    (( first )) || data+=','; first=0
-    data+="\"worktrees\":[${worktrees_json}]"
-  fi
-  printf '{"contract_version":1,"tool_version":"%s","operation":' "$WORKTREE_MANAGER_VERSION"
-  json_quote "$operation"
-  printf ',"result":"%s","data":{%s},"warnings":[],"error":' "$result" "$data"
-  if [[ -z "$error_code" ]]; then printf 'null'; else printf '{"code":'; json_quote "$error_code"; printf ',"message":'; json_quote "$error"; printf ',"exit_code":%s}' "$code"; fi
-  printf '}\n'
-  return "$code"
 }

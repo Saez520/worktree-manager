@@ -44,4 +44,4 @@ assert recover["operation"] == "recover" and recover["result"] == "no_pending_wo
 assert prune["operation"] == "prune" and prune["result"] == "no_pending_work"
 assert isinstance(prune["data"]["pruned"], int)
 PY2
-echo 'CLI JSON tests passed' 
+echo 'CLI JSON tests passed'
