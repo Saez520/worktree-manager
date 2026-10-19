@@ -5,6 +5,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 (cd "$tmp" && "$ROOT/worktree.sh" --version) | grep -qx '1.0.0'
 help="$(cd "$tmp" && "$ROOT/worktree.sh" --help)"
+printf '%s\n' "$help" | grep -q '^  Usage:'
+printf '%s\n' "$help" | grep -q 'global-options'
 printf '%s\n' "$help" | grep -q 'target-direct'
 printf '%s\n' "$help" | grep -q 'complete <work-id> --target submodule'
 printf '%s\n' "$help" | grep -q 'recover \[<transaction-id>\].*--target submodule'

@@ -8,9 +8,9 @@ target_direct_sha256() {
 }
 
 target_direct_ensure_git() {
-  command -v git >/dev/null 2>&1 || { printf '%s\n' "Git 2.54.0 es obligatorio" >&2; return 7; }
+  command -v git >/dev/null 2>&1 || { printf '%s\n' "Git 2.54.0 is required" >&2; return 7; }
   local version_output; version_output="$(git --version 2>/dev/null || true)"
-  [[ "$version_output" == "git version 2.54.0" ]] || { printf '%s\n' "Se requiere exactamente Git 2.54.0 (se obtuvo: ${version_output:-ausente})" >&2; return 7; }
+  [[ "$version_output" == "git version 2.54.0" ]] || { printf '%s\n' "Git 2.54.0 is required exactly (got: ${version_output:-missing})" >&2; return 7; }
 }
 
 target_direct_encode() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
@@ -315,7 +315,7 @@ target_direct_main() {
   TD_TRANSPORT_MODULE=""
   case "$command" in create|link-parent|abort|complete) work_id="${1:-}"; shift || true;; recover) tx="${1:-}"; shift || true;; *) return 10;; esac
   [[ -n "${work_id:-$tx}" ]] || return 2
-  while [[ $# -gt 0 ]]; do arg="$1"; case "$arg" in --target) target_kind="${2:-}"; shift 2;; --submodule-path) subpath="${2:-}"; shift 2;; --base) base="${2:-}"; base_seen=1; shift 2;; --link-parent) link="${2:-}"; shift 2;; --tx) tx="${2:-}"; tx_seen=1; shift 2;; *) printf '%s\n' "Opción o argumento desconocido: $arg" >&2; return 2;; esac; done
+  while [[ $# -gt 0 ]]; do arg="$1"; case "$arg" in --target) target_kind="${2:-}"; shift 2;; --submodule-path) subpath="${2:-}"; shift 2;; --base) base="${2:-}"; base_seen=1; shift 2;; --link-parent) link="${2:-}"; shift 2;; --tx) tx="${2:-}"; tx_seen=1; shift 2;; *) printf '%s\n' "Unknown option or argument: $arg" >&2; return 2;; esac; done
   if [[ "$command" == recover ]]; then target_kind=submodule; fi
   [[ "$command" == create || "$base_seen" == 0 ]] || { [[ "$command" == complete ]] || return 2; }
   [[ "$command" == abort || "$tx_seen" == 0 ]] || return 2
@@ -371,7 +371,7 @@ target_direct_main() {
     create)
       [[ -n "$base" ]] || return 3; git -C "$TD_TARGET" check-ref-format --branch "$TD_BRANCH" >/dev/null 2>&1 || return 3; git -C "$TD_TARGET" show-ref --verify --quiet "refs/heads/$TD_BRANCH" && return 4; [[ ! -e "$TD_WORKTREE" ]] || return 4
       TD_EXPECTED_EFFECT="target worktree created"; target_direct_write_descriptor validated; target_direct_write_meta validated; target_direct_journal descriptor_written
-      git -C "$TD_TARGET" worktree add -b "$TD_BRANCH" "$TD_WORKTREE" "$TD_BASE" >/dev/null || { TD_POST_STATE=create_failed; target_direct_journal blocked 6; return 6; }
+      LC_ALL=C git -C "$TD_TARGET" worktree add -b "$TD_BRANCH" "$TD_WORKTREE" "$TD_BASE" >/dev/null || { TD_POST_STATE=create_failed; target_direct_journal blocked 6; return 6; }
       TD_OBSERVED_EFFECT="target worktree created"; target_direct_journal worktree_created; target_direct_journal ready
       printf 'operation: create\nresult: success\nparent_worktree: none\nworktree: %s\nbranch: %s\n' "$TD_WORKTREE" "$TD_BRANCH";;
     link-parent)

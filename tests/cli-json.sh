@@ -23,6 +23,7 @@ git -C "$repo" commit -qm base
 python3 - "$tmp/result.json" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1], encoding="utf-8"))
+assert set(result) == {"contract_version", "tool_version", "operation", "result", "data", "warnings", "error"}
 assert result["contract_version"] == 1
 assert result["tool_version"] == "1.0.0"
 assert result["operation"] == "list"
@@ -38,6 +39,10 @@ PY
 python3 - "$tmp/create.json" "$tmp/recover.json" "$tmp/prune.json" <<'PY2'
 import json, sys
 create, recover, prune = [json.load(open(path, encoding="utf-8")) for path in sys.argv[1:]]
+for envelope in (create, recover, prune):
+    assert set(envelope) == {"contract_version", "tool_version", "operation", "result", "data", "warnings", "error"}
+    assert isinstance(envelope["contract_version"], int)
+    assert isinstance(envelope["warnings"], list)
 assert create["operation"] == "create" and create["result"] == "success"
 assert create["data"]["branch"] == "worktree/sample"
 assert recover["operation"] == "recover" and recover["result"] == "no_pending_work"

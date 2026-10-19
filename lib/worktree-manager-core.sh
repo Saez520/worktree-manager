@@ -71,28 +71,28 @@ die_with_unlock() {
 }
 
 ensure_git() {
-  command -v git >/dev/null 2>&1 || die "Se requiere Git 2.5 o superior"
+  command -v git >/dev/null 2>&1 || die "Git 2.5 or newer is required"
   local version_output major minor
   version_output="$(git version)"
   if [[ "$version_output" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
     major="${BASH_REMATCH[1]}"
     minor="${BASH_REMATCH[2]}"
-    (( major > 2 || (major == 2 && minor >= 5) )) || die "Se requiere Git 2.5 o superior"
+    (( major > 2 || (major == 2 && minor >= 5) )) || die "Git 2.5 or newer is required"
   else
-    die "No pude verificar la versión de Git. Se requiere Git 2.5 o superior"
+    die "Could not verify the Git version. Git 2.5 or newer is required"
   fi
 }
 
 absolute_existing_dir() {
-  [[ "$1" = /* && -d "$1" ]] || die "El repositorio debe ser un directorio absoluto existente"
+  [[ "$1" = /* && -d "$1" ]] || die "Repository must be an existing absolute directory"
 }
 
 absolute_existing_file() {
-  [[ "$1" = /* && -f "$1" ]] || die "La configuración debe ser un archivo absoluto existente"
+  [[ "$1" = /* && -f "$1" ]] || die "Configuration must be an existing absolute file"
 }
 
 repo_root() {
-  git -C "$1" rev-parse --show-toplevel 2>/dev/null || die "No estás dentro de un repositorio Git válido"
+  git -C "$1" rev-parse --show-toplevel 2>/dev/null || die "Not inside a valid Git repository"
 }
 
 resolve_repo() {
@@ -102,7 +102,7 @@ resolve_repo() {
     REPO_ROOT="$(repo_root "$requested_repo")"
   else
     REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-    [[ -n "$REPO_ROOT" ]] || die "No estás dentro de un repositorio Git válido"
+    [[ -n "$REPO_ROOT" ]] || die "Not inside a valid Git repository"
   fi
   cd -- "$REPO_ROOT"
   GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
@@ -122,48 +122,48 @@ parse_config() {
   local -A seen=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" == \#* ]] && continue
-    [[ "$line" == *=* ]] || die "Configuración inválida: cada línea debe usar key=value"
+    [[ "$line" == *=* ]] || die "Invalid configuration: each line must use key=value"
     key="${line%%=*}"
     value="${line#*=}"
-    [[ "$key" =~ ^[a-z_]+$ ]] || die "Clave de configuración inválida: $key"
-    [[ -z "${seen[$key]+x}" ]] || die "Clave de configuración repetida: $key"
+    [[ "$key" =~ ^[a-z_]+$ ]] || die "Invalid configuration key: $key"
+    [[ -z "${seen[$key]+x}" ]] || die "Duplicate configuration key: $key"
     seen["$key"]=1
     case "$key" in
       worktrees_dir)
-        [[ -n "$value" && "$value" != -* ]] || die "worktrees_dir inválido"
+        [[ -n "$value" && "$value" != -* ]] || die "Invalid worktrees_dir"
         WORKTREES_DIR="$value" ;;
       branch_prefix)
-        [[ -n "$value" && "$value" != -* && "$value" != *$'\n'* ]] || die "branch_prefix inválido"
+        [[ -n "$value" && "$value" != -* && "$value" != *$'\n'* ]] || die "Invalid branch_prefix"
         BRANCH_PREFIX="$value" ;;
       state_dir)
-        valid_relative_state_dir "$value" || die "state_dir inválido"
+        valid_relative_state_dir "$value" || die "Invalid state_dir"
         STATE_DIR="$value" ;;
-      backup_dir) [[ -n "$value" && "$value" != /* && "$value" != *..* ]] || die "backup_dir inválido"; BACKUP_DIR="$value" ;;
-      backup_ref_prefix) [[ "$value" =~ ^[A-Za-z0-9._/-]+$ && "$value" != *..* ]] || die "backup_ref_prefix inválido"; BACKUP_REF_PREFIX="$value" ;;
-      lock_dir) valid_relative_state_dir "$value" || die "lock_dir inválido"; LOCK_DIR="$value" ;;
+      backup_dir) [[ -n "$value" && "$value" != /* && "$value" != *..* ]] || die "Invalid backup_dir"; BACKUP_DIR="$value" ;;
+      backup_ref_prefix) [[ "$value" =~ ^[A-Za-z0-9._/-]+$ && "$value" != *..* ]] || die "Invalid backup_ref_prefix"; BACKUP_REF_PREFIX="$value" ;;
+      lock_dir) valid_relative_state_dir "$value" || die "Invalid lock_dir"; LOCK_DIR="$value" ;;
       prepare_command) PREPARE_COMMAND="$value" ;;
       prepare_enabled)
-        valid_bool "$value" || die "prepare_enabled debe ser true o false"
+        valid_bool "$value" || die "prepare_enabled must be true or false"
         [[ "$value" == true ]] && PREPARE_ENABLED=1 || PREPARE_ENABLED=0 ;;
       verify_command) VERIFY_COMMAND="$value" ;;
       verify_enabled)
-        valid_bool "$value" || die "verify_enabled debe ser true o false"
+        valid_bool "$value" || die "verify_enabled must be true or false"
         [[ "$value" == true ]] && VERIFY_ENABLED=1 || VERIFY_ENABLED=0 ;;
       preserve_dirty)
-        valid_bool "$value" || die "preserve_dirty debe ser true o false"
+        valid_bool "$value" || die "preserve_dirty must be true or false"
         [[ "$value" == true ]] && PRESERVE_DIRTY=1 || PRESERVE_DIRTY=0 ;;
-      *) die "Clave de configuración desconocida: $key" ;;
+      *) die "Unknown configuration key: $key" ;;
     esac
   done < "$path"
-  if (( PREPARE_ENABLED == 1 )) && [[ -z "$PREPARE_COMMAND" ]]; then die "prepare_enabled requiere prepare_command"; fi
-  if (( VERIFY_ENABLED == 1 )) && [[ -z "$VERIFY_COMMAND" ]]; then die "verify_enabled requiere verify_command"; fi
+  if (( PREPARE_ENABLED == 1 )) && [[ -z "$PREPARE_COMMAND" ]]; then die "prepare_enabled requires prepare_command"; fi
+  if (( VERIFY_ENABLED == 1 )) && [[ -z "$VERIFY_COMMAND" ]]; then die "verify_enabled requires verify_command"; fi
 }
 
 resolve_paths() {
   if [[ "$WORKTREES_DIR" = /* ]]; then
     WORKTREES_ROOT="$(cd -- "$WORKTREES_DIR" 2>/dev/null && pwd -P || printf '%s' "$WORKTREES_DIR")"
   else
-    [[ "$WORKTREES_DIR" != . && "$WORKTREES_DIR" != ../* && "$WORKTREES_DIR" != */../* ]] || die "worktrees_dir no puede salir del repositorio"
+    [[ "$WORKTREES_DIR" != . && "$WORKTREES_DIR" != ../* && "$WORKTREES_DIR" != */../* ]] || die "worktrees_dir cannot escape the repository"
     WORKTREES_ROOT="$REPO_ROOT/$WORKTREES_DIR"
   fi
   STATE_ROOT="$GIT_COMMON_DIR/$STATE_DIR"
@@ -198,18 +198,18 @@ detect_base_branch() {
 
 normalize_base_branch() {
   local base_branch="$1"
-  [[ -n "$base_branch" && "$base_branch" != -* ]] || die "La rama base no puede estar vacía"
-  git check-ref-format --branch "$base_branch" >/dev/null 2>&1 || die "La rama base '$base_branch' es inválida"
-  git rev-parse --verify --quiet "refs/heads/$base_branch^{commit}" >/dev/null || die "La rama base '$base_branch' no existe"
+  [[ -n "$base_branch" && "$base_branch" != -* ]] || die "Base branch cannot be empty"
+  git check-ref-format --branch "$base_branch" >/dev/null 2>&1 || die "Base branch '$base_branch' is invalid"
+  git rev-parse --verify --quiet "refs/heads/$base_branch^{commit}" >/dev/null || die "Base branch '$base_branch' does not exist"
 }
 
 validate_work_id() {
   local work_id="$1" segment
   local -a segments=()
-  [[ -n "$work_id" && "$work_id" != /* && "$work_id" != -* && "$work_id" != *$'\n'* ]] || die "Identificador de trabajo inválido"
+  [[ -n "$work_id" && "$work_id" != /* && "$work_id" != -* && "$work_id" != *$'\n'* ]] || die "Invalid worktree identifier"
   IFS=/ read -r -a segments <<< "$work_id"
   for segment in "${segments[@]}"; do
-    [[ -n "$segment" && "$segment" != . && "$segment" != .. && "$segment" != --* && "$segment" =~ ^[A-Za-z0-9._-]+$ ]] || die "Identificador de trabajo inválido"
+    [[ -n "$segment" && "$segment" != . && "$segment" != .. && "$segment" != --* && "$segment" =~ ^[A-Za-z0-9._-]+$ ]] || die "Invalid worktree identifier"
   done
 }
 
@@ -249,7 +249,7 @@ ensure_ignored_local_path() {
   local path="$1" rel
   if [[ "$WORKTREES_DIR" != /* ]]; then
     rel="${path#"$REPO_ROOT/"}"
-    git check-ignore -q -- "$rel" || die "La ruta '$rel' no está excluida por Git; corregí la exclusión antes de crear"
+    git check-ignore -q -- "$rel" || die "Path '$rel' is not ignored by Git; fix the ignore rule before creating"
   fi
 }
 
@@ -259,12 +259,12 @@ validate_identity() {
   validate_work_id "$work_id"
   branch="$(worktree_branch_for "$work_id")"
   path_abs="$(worktree_path_abs_for "$work_id")"
-  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "La rama de trabajo '$branch' es inválida"
-  branch_exists "$branch" || die "No encontré la rama '$branch'"
-  [[ -e "$path_abs" ]] || die "No encontré la ruta del trabajo '$path_abs'"
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "Worktree branch '$branch' is invalid"
+  branch_exists "$branch" || die "Worktree branch '$branch' was not found"
+  [[ -e "$path_abs" ]] || die "Worktree path '$path_abs' was not found"
   registered_path="$(worktree_registered_for_branch "$branch" || true)"
-  [[ "$registered_path" == "$path_abs" ]] || die "La rama y la ruta no corresponden al trabajo solicitado"
-  worktree_registered_for_path "$path_abs" || die "La ruta no está registrada como worktree"
+  [[ "$registered_path" == "$path_abs" ]] || die "Branch and path do not correspond to the requested worktree"
+  worktree_registered_for_path "$path_abs" || die "Path is not registered as a worktree"
 }
 
 encode_work_id() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
@@ -279,7 +279,7 @@ acquire_locks() {
     lock="$LOCKS_DIR/$name"
     mkdir -p -- "$(dirname -- "$lock")"
     if ! mkdir -- "$lock" 2>/dev/null; then
-      die "Operación rechazada: el recurso '$name' está bloqueado; reintentá luego"
+      die "Operation rejected: resource '$name' is locked; retry later"
     fi
     printf '%s\n' "$$" > "$lock/pid"
     printf '%s\n' "$operation" > "$lock/operation"
@@ -290,7 +290,7 @@ acquire_locks() {
   CURRENT_OPERATION="$operation"
   if [[ "${WORKTREE_MANAGER_TEST_MODE:-0}" == 1 && -n "${WORKTREE_MANAGER_TEST_LOCK_BARRIER_DIR:-}" && -n "${WORKTREE_MANAGER_TEST_HOLD_AFTER_LOCK:-}" && "${WORKTREE_MANAGER_TEST_HOLD_AFTER_LOCK}" == "$operation" ]]; then
     local barrier="${WORKTREE_MANAGER_TEST_LOCK_BARRIER_DIR}"
-    [[ "$barrier" = /* ]] || die_with_unlock "La barrera de tests debe ser absoluta"
+    [[ "$barrier" = /* ]] || die_with_unlock "Test barrier must be absolute"
     mkdir -p -- "$barrier"
     : > "$barrier/$operation.ready"
     while [[ ! -e "$barrier/release" ]]; do sleep 0.01; done
@@ -365,7 +365,7 @@ close_write_phase() {
   local phase="$1" tmp
   case "$phase" in
     created|init_started|initialized|merge_started|merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed) ;;
-    *) die "Fase de cierre inválida: $phase" ;;
+    *) die "Invalid close phase: $phase" ;;
   esac
   case "$phase" in
     merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed) close_validate_squash ;;
@@ -398,33 +398,33 @@ valid_object_sha() {
 
 close_validate_commit_sha() {
   local label="$1" sha="$2" resolved
-  valid_object_sha "$sha" || die "El journal de cierre tiene un $label con formato SHA inválido"
+  valid_object_sha "$sha" || die "Close journal $label has an invalid SHA format"
   resolved="$(git rev-parse --verify --quiet "$sha^{commit}" 2>/dev/null || true)"
-  [[ "$resolved" == "$sha" ]] || die "El journal de cierre tiene un $label que no apunta a un commit verificable"
+  [[ "$resolved" == "$sha" ]] || die "Close journal $label does not point to a verifiable commit"
 }
 
 close_validate_squash() {
   local base_head parents parent_count
-  [[ -n "$CLOSE_SQUASH_SHA" ]] || die "El journal de cierre requiere squash_sha antes de retirar recursos"
+  [[ -n "$CLOSE_SQUASH_SHA" ]] || die "Close journal requires squash_sha before removing resources"
   close_validate_commit_sha squash_sha "$CLOSE_SQUASH_SHA"
   base_head="$(git rev-parse --verify --quiet "refs/heads/$CLOSE_BASE_BRANCH^{commit}" 2>/dev/null || true)"
-  [[ "$base_head" == "$CLOSE_SQUASH_SHA" ]] || die "El squash registrado no coincide con la base; no se modifica nada"
+  [[ "$base_head" == "$CLOSE_SQUASH_SHA" ]] || die "Recorded squash does not match the base; nothing is modified"
   parents="$(git rev-list --parents -n 1 "$CLOSE_SQUASH_SHA" 2>/dev/null || true)"
   parent_count="$(wc -w <<< "$parents" | tr -d ' ')"
-  [[ "$parent_count" == 2 && "${parents#* }" == "$CLOSE_BEFORE_HEAD" ]] || die "El squash registrado no coincide con before_head"
-  [[ "$(git rev-list --count "$CLOSE_BEFORE_HEAD..$CLOSE_SQUASH_SHA" 2>/dev/null || true)" == 1 ]] || die "El squash registrado no es único"
+  [[ "$parent_count" == 2 && "${parents#* }" == "$CLOSE_BEFORE_HEAD" ]] || die "Recorded squash does not match before_head"
+  [[ "$(git rev-list --count "$CLOSE_BEFORE_HEAD..$CLOSE_SQUASH_SHA" 2>/dev/null || true)" == 1 ]] || die "Recorded squash is not unique"
 }
 
 close_validate_live_worktree() {
   local require_origin="${1:-true}" worktree_head branch_head
-  [[ -e "$CLOSE_PATH" ]] || die "El journal de cierre perdió el worktree antes de una fase que lo requiere"
-  worktree_registered_for_path "$CLOSE_PATH" || die "El journal de cierre perdió el registro del worktree"
-  branch_exists "$CLOSE_BRANCH" || die "El journal de cierre perdió la rama antes de una fase que la requiere"
+  [[ -e "$CLOSE_PATH" ]] || die "Close journal lost the worktree before a phase that requires it"
+  worktree_registered_for_path "$CLOSE_PATH" || die "Close journal lost the worktree registration"
+  branch_exists "$CLOSE_BRANCH" || die "Close journal lost the branch before a phase that requires it"
   branch_head="$(git rev-parse "refs/heads/$CLOSE_BRANCH")"
-  [[ "$(git -C "$CLOSE_PATH" symbolic-ref -q HEAD 2>/dev/null || true)" == "refs/heads/$CLOSE_BRANCH" ]] || die "El HEAD del worktree no coincide con la rama del journal"
+  [[ "$(git -C "$CLOSE_PATH" symbolic-ref -q HEAD 2>/dev/null || true)" == "refs/heads/$CLOSE_BRANCH" ]] || die "Worktree HEAD does not match the journal branch"
   worktree_head="$(git -C "$CLOSE_PATH" rev-parse HEAD 2>/dev/null || true)"
-  [[ "$worktree_head" == "$branch_head" ]] || die "El HEAD del worktree no coincide con la rama; no se modifica nada"
-  if [[ "$require_origin" == true ]]; then [[ "$branch_head" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama del journal de cierre cambió; no se modifica nada"; fi
+  [[ "$worktree_head" == "$branch_head" ]] || die "Worktree HEAD does not match the branch; nothing is modified"
+  if [[ "$require_origin" == true ]]; then [[ "$branch_head" == "$CLOSE_ORIGIN_SHA" ]] || die "Close journal branch changed; nothing modified"; fi
 }
 
 close_validate_phase_resources() {
@@ -436,25 +436,25 @@ close_validate_phase_resources() {
       close_validate_live_worktree true
       ;;
     remove_started)
-      branch_exists "$CLOSE_BRANCH" || die "La fase remove_started perdió la rama; no se modifica nada"
-      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de remove_started; no se modifica nada"
-      if [[ -e "$CLOSE_PATH" ]]; then close_validate_live_worktree; else worktree_registered_for_path "$CLOSE_PATH" && die "La fase remove_started tiene un worktree registrado sin ruta"; fi
+      branch_exists "$CLOSE_BRANCH" || die "remove_started phase lost the branch; nothing modified"
+      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before remove_started; nothing modified"
+      if [[ -e "$CLOSE_PATH" ]]; then close_validate_live_worktree; else worktree_registered_for_path "$CLOSE_PATH" && die "remove_started phase has a registered worktree without a path"; fi
       ;;
     removed)
-      [[ ! -e "$CLOSE_PATH" ]] || die "La fase removed conserva el worktree; no se modifica nada"
-      worktree_registered_for_path "$CLOSE_PATH" && die "La fase removed conserva el registro del worktree"
-      branch_exists "$CLOSE_BRANCH" || die "La fase removed perdió la rama; no se modifica nada"
-      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de branch cleanup; no se modifica nada"
+      [[ ! -e "$CLOSE_PATH" ]] || die "removed phase preserves the worktree; nothing is modified"
+      worktree_registered_for_path "$CLOSE_PATH" && die "removed phase preserves the worktree registration"
+      branch_exists "$CLOSE_BRANCH" || die "removed phase lost the branch; nothing modified"
+      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before branch cleanup; nothing modified"
       ;;
     branch_cleanup_started)
-      [[ ! -e "$CLOSE_PATH" ]] || die "La fase branch_cleanup_started conserva el worktree; no se modifica nada"
-      worktree_registered_for_path "$CLOSE_PATH" && die "La fase branch_cleanup_started conserva el registro del worktree"
-      if branch_exists "$CLOSE_BRANCH"; then [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de branch cleanup; no se modifica nada"; fi
+      [[ ! -e "$CLOSE_PATH" ]] || die "branch_cleanup_started phase preserves the worktree; nothing is modified"
+      worktree_registered_for_path "$CLOSE_PATH" && die "branch_cleanup_started phase preserves the worktree registration"
+      if branch_exists "$CLOSE_BRANCH"; then [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before branch cleanup; nothing modified"; fi
       ;;
     closed)
-      [[ ! -e "$CLOSE_PATH" ]] || die "El journal cerrado tiene el worktree reintroducido"
-      worktree_registered_for_path "$CLOSE_PATH" && die "El journal cerrado tiene el worktree registrado"
-      branch_exists "$CLOSE_BRANCH" && die "El journal cerrado tiene la rama reintroducida"
+      [[ ! -e "$CLOSE_PATH" ]] || die "Closed journal has a reintroduced worktree"
+      worktree_registered_for_path "$CLOSE_PATH" && die "Closed journal has a registered worktree"
+      branch_exists "$CLOSE_BRANCH" && die "Closed journal has a reintroduced branch"
       ;;
   esac
   return 0
@@ -466,38 +466,38 @@ close_validate_record() {
   normalize_base_branch "$CLOSE_BASE_BRANCH"
   case "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" in
     false:not_requested|true:pending|true:initialized) ;;
-    *) die "La combinación init_requested/init_result del journal de cierre es imposible" ;;
+    *) die "Close journal init_requested/init_result combination is impossible" ;;
   esac
   case "$CLOSE_PHASE" in
     created)
-      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested ]] || die "created requiere init_requested=false e init_result=not_requested"
-      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "created no puede tener restauración del destino"
+      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested ]] || die "created requires init_requested=false e init_result=not_requested"
+      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "created cannot restore the destination"
       ;;
     init_started)
-      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:pending ]] || die "init_started requiere inicialización pendiente"
-      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "init_started no puede tener restauración del destino"
+      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:pending ]] || die "init_started requires pending initialization"
+      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "init_started cannot restore the destination"
       ;;
     initialized)
-      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "initialized requiere inicialización completada"
-      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "initialized no puede tener restauración del destino"
+      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "initialized requires completed initialization"
+      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "initialized cannot restore the destination"
       ;;
     merge_started)
-      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested || "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "merge_started requiere inicialización estable"
-      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "merge_started no puede tener restauración del destino"
+      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested || "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "merge_started requires stable initialization"
+      [[ "$CLOSE_PARENT_RESTORE" == not_restored ]] || die "merge_started cannot restore the destination"
       if [[ -n "$CLOSE_SQUASH_SHA" ]]; then close_validate_squash; fi
       ;;
     merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed)
-      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested || "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "La fase $CLOSE_PHASE requiere inicialización estable"
+      [[ "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == false:not_requested || "$CLOSE_INIT_REQUESTED:$CLOSE_INIT_RESULT" == true:initialized ]] || die "Phase $CLOSE_PHASE requires stable initialization"
       case "$CLOSE_PARENT_RESTORE" in
         not_restored|restored_clean|restored_dirty) ;;
-        pending_manual) [[ "$CLOSE_PHASE" == merged ]] || die "pending_manual sólo puede quedar en fase merged" ;;
-        *) die "parent_restore inválido para la fase $CLOSE_PHASE" ;;
+        pending_manual) [[ "$CLOSE_PHASE" == merged ]] || die "pending_manual can only remain in merged phase" ;;
+        *) die "Invalid parent_restore for phase $CLOSE_PHASE" ;;
       esac
       close_validate_squash
       ;;
   esac
   if [[ "$CLOSE_PHASE" == created || "$CLOSE_PHASE" == init_started || "$CLOSE_PHASE" == initialized ]]; then
-    [[ -z "$CLOSE_SQUASH_SHA" ]] || die "squash_sha no puede existir antes de merge_started"
+    [[ -z "$CLOSE_SQUASH_SHA" ]] || die "squash_sha cannot exist before merge_started"
   fi
   close_validate_phase_resources
 }
@@ -506,21 +506,21 @@ close_load() {
   local work_id="$1" key value journal_phase line_count
   close_dir="$(close_dir_for "$work_id")"
   if [[ ! -d "$close_dir" ]]; then return 1; fi
-  [[ -f "$close_dir/meta" && -f "$close_dir/journal" ]] || die "El journal de cierre de '$work_id' está incompleto"
+  [[ -f "$close_dir/meta" && -f "$close_dir/journal" ]] || die "Close journal for '$work_id' is incomplete"
   line_count="$(wc -l < "$close_dir/meta" | tr -d ' ')"
-  [[ "$line_count" == 13 ]] || die "El journal de cierre de '$work_id' está truncado o corrupto"
+  [[ "$line_count" == 13 ]] || die "Close journal for '$work_id' is truncated or corrupt"
   while IFS= read -r line; do
     case "$line" in
       version=*|work_id=*|base_branch=*|branch=*|path=*|common_dir=*|origin_sha=*|before_head=*|squash_sha=*|init_requested=*|init_result=*|parent_restore=*|phase=*) ;;
-      *) die "El journal de cierre de '$work_id' está corrupto" ;;
+      *) die "Close journal for '$work_id' is corrupt" ;;
     esac
   done < "$close_dir/meta"
   for key in version work_id base_branch branch path common_dir origin_sha before_head squash_sha init_requested init_result parent_restore phase; do
     value="$(close_value "$key")"
-    [[ -n "$value" || "$key" == squash_sha ]] || die "El journal de cierre de '$work_id' está incompleto ($key)"
-    [[ "$(grep -c "^${key}=" "$close_dir/meta")" == 1 ]] || die "El journal de cierre de '$work_id' tiene una clave duplicada o ausente ($key)"
+    [[ -n "$value" || "$key" == squash_sha ]] || die "Close journal for '$work_id' is incomplete ($key)"
+    [[ "$(grep -c "^${key}=" "$close_dir/meta")" == 1 ]] || die "Close journal for '$work_id' has a duplicate or missing key ($key)"
     case "$key" in
-      version) [[ "$value" == 1 ]] || die "Versión de journal de cierre no soportada"; CLOSE_VERSION="$value" ;;
+      version) [[ "$value" == 1 ]] || die "Unsupported close journal version"; CLOSE_VERSION="$value" ;;
       work_id) CLOSE_WORK_ID="$value" ;;
       base_branch) CLOSE_BASE_BRANCH="$value" ;;
       branch) CLOSE_BRANCH="$value" ;;
@@ -536,22 +536,22 @@ close_load() {
     esac
   done
   line_count="$(wc -l < "$close_dir/journal" | tr -d ' ')"
-  [[ "$line_count" == 1 ]] || die "El journal de cierre de '$work_id' está truncado o corrupto"
-  [[ "$(tail -c 1 "$close_dir/journal" | od -An -t x1 | tr -d '[:space:]')" == 0a ]] || die "El journal de cierre de '$work_id' está truncado o corrupto"
+  [[ "$line_count" == 1 ]] || die "Close journal for '$work_id' is truncated or corrupt"
+  [[ "$(tail -c 1 "$close_dir/journal" | od -An -t x1 | tr -d '[:space:]')" == 0a ]] || die "Close journal for '$work_id' is truncated or corrupt"
   journal_phase="$(cat "$close_dir/journal")"
   case "$journal_phase" in
     created|init_started|initialized|merge_started|merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed) ;;
-    *) die "El journal de cierre de '$work_id' está corrupto" ;;
+    *) die "Close journal for '$work_id' is corrupt" ;;
   esac
-  [[ "$journal_phase" == "$CLOSE_PHASE" ]] || die "El journal de cierre de '$work_id' no coincide con meta.phase"
-  [[ "$CLOSE_WORK_ID" == "$work_id" ]] || die "El journal de cierre no coincide con el trabajo solicitado"
-  [[ "$CLOSE_BRANCH" == "$(worktree_branch_for "$work_id")" ]] || die "El journal de cierre no coincide con la rama"
-  [[ "$CLOSE_PATH" == "$(worktree_path_abs_for "$work_id")" ]] || die "El journal de cierre no coincide con la ruta"
-  [[ "$CLOSE_COMMON_DIR" == "$GIT_COMMON_DIR" ]] || die "El journal de cierre no coincide con el repositorio"
-  valid_bool "$CLOSE_INIT_REQUESTED" || die "init_requested inválido en el journal de cierre"
-  case "$CLOSE_INIT_RESULT" in not_requested|pending|initialized) ;; *) die "init_result inválido en el journal de cierre" ;; esac
-  case "$CLOSE_PARENT_RESTORE" in not_restored|restored_clean|restored_dirty|pending_manual) ;; *) die "parent_restore inválido en el journal de cierre" ;; esac
-  case "$CLOSE_PHASE" in created|init_started|initialized|merge_started|merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed) ;; *) die "Fase de cierre desconocida" ;; esac
+  [[ "$journal_phase" == "$CLOSE_PHASE" ]] || die "Close journal for '$work_id' does not match meta.phase"
+  [[ "$CLOSE_WORK_ID" == "$work_id" ]] || die "Close journal does not match the requested worktree"
+  [[ "$CLOSE_BRANCH" == "$(worktree_branch_for "$work_id")" ]] || die "Close journal does not match the branch"
+  [[ "$CLOSE_PATH" == "$(worktree_path_abs_for "$work_id")" ]] || die "Close journal does not match the path"
+  [[ "$CLOSE_COMMON_DIR" == "$GIT_COMMON_DIR" ]] || die "Close journal does not match the repository"
+  valid_bool "$CLOSE_INIT_REQUESTED" || die "Invalid init_requested in close journal"
+  case "$CLOSE_INIT_RESULT" in not_requested|pending|initialized) ;; *) die "Invalid init_result in close journal" ;; esac
+  case "$CLOSE_PARENT_RESTORE" in not_restored|restored_clean|restored_dirty|pending_manual) ;; *) die "Invalid parent_restore in close journal" ;; esac
+  case "$CLOSE_PHASE" in created|init_started|initialized|merge_started|merged|deinit_started|deinitialized|remove_started|removed|branch_cleanup_started|closed) ;; *) die "Phase of close unknown" ;; esac
   close_validate_record
   return 0
 }
@@ -600,15 +600,15 @@ submodule_status_lines() {
 close_verify_initialized() {
   local root="$1" line marker rest expected actual sm_path status_lines
   if ! status_lines="$(submodule_status_lines "$root")"; then
-    die "No se pudo verificar el estado de los submodules"
+    die "Could not verify submodule state"
   fi
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     marker="${line:0:1}"; rest="${line:1}"
     expected="${rest%% *}"; sm_path="${rest#* }"; sm_path="${sm_path%% *}"
-    [[ "$marker" != "-" && "$marker" != "U" ]] || { printf '%s\n' "No se pudo inicializar el submodule '$sm_path'" >&2; return 1; }
+    [[ "$marker" != "-" && "$marker" != "U" ]] || { printf '%s\n' "Could not initialize the submodule '$sm_path'" >&2; return 1; }
     actual="$(git -C "$root/$sm_path" rev-parse HEAD 2>/dev/null || true)"
-    [[ "$actual" == "$expected" ]] || { printf '%s\n' "El submodule '$sm_path' no coincide con su gitlink" >&2; return 1; }
+    [[ "$actual" == "$expected" ]] || { printf '%s\n' "Submodule '$sm_path' does not match its gitlink" >&2; return 1; }
   done <<< "$status_lines"
 }
 
@@ -617,7 +617,7 @@ capture_transaction() {
   TX_TRACKED_SHA=""; TX_UNTRACKED_SHA=""
   if [[ -s "$tx_dir/tracked.paths" ]]; then
     TX_TRACKED_SHA="$(git stash create "worktree-manager-backup $tx_id")"
-    [[ -n "$TX_TRACKED_SHA" ]] || { abort_capture_cleanup "$tx_id"; die "La captura del estado del destino falló; el cierre fue cancelado y no se modificó nada."; }
+    [[ -n "$TX_TRACKED_SHA" ]] || { abort_capture_cleanup "$tx_id"; die "Destination state capture failed; close was cancelled and nothing was modified."; }
     git update-ref "$(backup_ref_for "$tx_id")" "$TX_TRACKED_SHA"
   fi
   if [[ -s "$tx_dir/untracked.paths" ]]; then
@@ -629,8 +629,8 @@ capture_transaction() {
     TX_UNTRACKED_SHA="$(git commit-tree "$tree_sha" -m "worktree-manager-backup-untracked $tx_id")"
     git update-ref "$(backup_ref_for "$tx_id-untracked")" "$TX_UNTRACKED_SHA"
   fi
-  if [[ -n "$TX_TRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_TRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."; }; done < "$tx_dir/tracked.paths"; fi
-  if [[ -n "$TX_UNTRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_UNTRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."; }; done < "$tx_dir/untracked.paths"; fi
+  if [[ -n "$TX_TRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_TRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "Capture verification failed; close was cancelled and nothing was modified."; }; done < "$tx_dir/tracked.paths"; fi
+  if [[ -n "$TX_UNTRACKED_SHA" ]]; then while IFS= read -r -d '' path; do git cat-file -e "$TX_UNTRACKED_SHA:$path" >/dev/null 2>&1 || { abort_capture_cleanup "$tx_id"; die "Capture verification failed; close was cancelled and nothing was modified."; }; done < "$tx_dir/untracked.paths"; fi
 }
 
 abort_capture_cleanup() {
@@ -642,14 +642,14 @@ abort_capture_cleanup() {
 
 clean_destination() {
   local tx_dir="$1" path
-  if [[ -s "$tx_dir/tracked.paths" ]]; then git restore --source=HEAD --staged --worktree -- ./ >/dev/null 2>&1 || { journal_write "$tx_dir" captured; die "La limpieza del destino falló; la transacción quedó en fase captured. Ejecutá 'worktree.sh recover'."; }; fi
+  if [[ -s "$tx_dir/tracked.paths" ]]; then git restore --source=HEAD --staged --worktree -- ./ >/dev/null 2>&1 || { journal_write "$tx_dir" captured; die "Destination cleanup failed; transaction remains in captured phase. Run 'worktree.sh recover'."; }; fi
   if [[ -s "$tx_dir/untracked.paths" ]]; then while IFS= read -r -d '' path; do [[ -e "$path" || -L "$path" ]] && rm -f -- "$path"; done < "$tx_dir/untracked.paths"; fi
 }
 
 merge_squash_branch() {
   local base="$1" branch="$2" before="$3" after parents
-  git switch "$base" >/dev/null
-  git merge --squash "$branch" >/dev/null || return 1
+  LC_ALL=C git switch "$base" >/dev/null
+  LC_ALL=C git merge --squash "$branch" >/dev/null || return 1
   git diff --cached --quiet && return 1
   git commit -m "squash merge $branch into $base" >/dev/null
   after="$(git rev-parse HEAD)"
@@ -676,12 +676,12 @@ print_pending_manual_instructions() {
   local tx_id="$1"
   local tracked_ref="$(backup_ref_for "$tx_id")" untracked_ref="$(backup_ref_for "$tx_id-untracked")"
   cat >&2 <<EOF
-La restauración automática falló; la transacción $tx_id quedó pendiente-manual.
-La fusión quedó aplicada y el backup permanece intacto; nada fue descartado.
-Pasos seguros para resolverlo vos mismo (reemplazá solo el identificador):
+Automatic restoration failed; transaction $tx_id is pending-manual.
+The merge was applied and the backup remains intact; nothing was discarded.
+Safe steps to resolve this yourself (replace only the identifier):
   git stash apply --index $tracked_ref
   git restore --source=$untracked_ref --worktree -- .
-Inspeccioná el resultado con 'git status' antes de seguir.
+Inspect the result with 'git status' before continuing.
 EOF
 }
 mark_pending_manual() { journal_write "$1" pending_manual; print_pending_manual_instructions "$2"; }
@@ -725,8 +725,8 @@ detect_unsupported() {
     fields=(); while IFS= read -r -d '' value; do fields+=("$value"); done < <(git check-attr -z filter -- "./$path")
     [[ -z "${fields[2]:-}" || "${fields[2]}" == unspecified ]] || { unsupported+="filters "; break; }
   done < "$tracked_list"
-  [[ -z "$unsupported" ]] || { printf 'Aviso: setup no soportado para preservar cambios: %s\n' "${unsupported% }" >&2; return 1; }
-  if [[ -n "$(git ls-files --others --ignored --exclude-standard --directory || true)" ]]; then printf '%s\n' "Aviso: hay archivos ignorados en el destino; quedan fuera de la captura y no serán tocados." >&2; fi
+  [[ -z "$unsupported" ]] || { printf 'Warning: unsupported setup for preserving changes: %s\n' "${unsupported% }" >&2; return 1; }
+  if [[ -n "$(git ls-files --others --ignored --exclude-standard --directory || true)" ]]; then printf '%s\n' "Warning: ignored files exist in the destination; they are excluded from the capture and will not be touched." >&2; fi
 }
 
 # A declared submodule is not part of the parent's dirty payload when it is
@@ -738,7 +738,7 @@ detect_unsupported() {
 preserve_submodules_clean() {
   local root="$1" line marker rest expected sm_path child child_status status_lines
   if ! status_lines="$(git -C "$root" submodule status --recursive 2>/dev/null)"; then
-    printf '%s\n' "Aviso: no se pudo verificar el estado de los submodules; se bloquea la preservación." >&2
+    printf '%s\n' "Warning: submodule state could not be verified; preservation is blocked." >&2
     return 1
   fi
   while IFS= read -r line; do
@@ -750,19 +750,19 @@ preserve_submodules_clean() {
     sm_path="${sm_path%% *}"
     case "$marker" in
       -) continue ;;
-      +) printf '%s\n' "Aviso: el submodule '$sm_path' diverge de su gitlink; se bloquea la preservación." >&2; return 1 ;;
-      U) printf '%s\n' "Aviso: el submodule '$sm_path' tiene un conflicto; se bloquea la preservación." >&2; return 1 ;;
+      +) printf '%s\n' "Warning: submodule '$sm_path' diverges from its gitlink; preservation is blocked." >&2; return 1 ;;
+      U) printf '%s\n' "Warning: submodule '$sm_path' has a conflict; preservation is blocked." >&2; return 1 ;;
       ' ') ;;
-      *) printf '%s\n' "Aviso: no se pudo interpretar el estado del submodule '$sm_path'; se bloquea la preservación." >&2; return 1 ;;
+      *) printf '%s\n' "Warning: could not interpret submodule '$sm_path' state; preservation is blocked." >&2; return 1 ;;
     esac
     child="$root/$sm_path"
     if ! child_status="$(git -C "$child" status --porcelain=v1 --untracked-files=all 2>/dev/null)"; then
-      printf '%s\n' "Aviso: no se pudo verificar el submodule '$sm_path'; se bloquea la preservación." >&2
+      printf '%s\n' "Warning: could not verify submodule '$sm_path'; preservation is blocked." >&2
       return 1
     fi
-    [[ -z "$child_status" ]] || { printf '%s\n' "Aviso: el submodule '$sm_path' tiene cambios locales; se bloquea la preservación." >&2; return 1; }
+    [[ -z "$child_status" ]] || { printf '%s\n' "Warning: submodule '$sm_path' has local changes; preservation is blocked." >&2; return 1; }
     if [[ "$(git -C "$child" rev-parse HEAD 2>/dev/null || true)" != "$expected" ]]; then
-      printf '%s\n' "Aviso: el submodule '$sm_path' diverge de su gitlink; se bloquea la preservación." >&2
+      printf '%s\n' "Warning: submodule '$sm_path' diverges from its gitlink; preservation is blocked." >&2
       return 1
     fi
   done <<< "$status_lines"
@@ -780,7 +780,7 @@ complete_has_other_pending_transaction() {
     phase="$(journal_read "$d" || true)"
     case "$phase" in restored|pending_manual|"") continue ;; esac
     tx_work="$(meta_value "$d" work_id)"
-    [[ "$tx_work" == "$expected_work_id" ]] || die "Existe una transacción de preservación pendiente ($(basename "$d"), fase $phase). Ejecutá 'worktree.sh recover $(basename "$d")' antes de reintentar el cierre."
+    [[ "$tx_work" == "$expected_work_id" ]] || die "A pending preservation transaction exists ($(basename "$d"), phase $phase). Run 'worktree.sh recover $(basename "$d")' before retrying close."
   done
 }
 
@@ -796,7 +796,7 @@ complete_blocks_pending_manual() {
     tx_branch="$(meta_value "$d" branch)"
     tx_path="$(meta_value "$d" path)"
     if [[ "$tx_work" == "$expected_work_id" || ( "$tx_branch" == "$expected_branch" && "$tx_path" == "$expected_path" ) ]]; then
-      die "La transacción de preservación '$tx_id' está en pending_manual para '$expected_work_id'; resolvé la restauración manual y ejecutá 'worktree.sh recover $tx_id' antes de reintentar complete. Se conservan el worktree, la rama y la base."
+      die "Preservation transaction '$tx_id' is pending_manual for '$expected_work_id'; resolve the manual restoration and run 'worktree.sh recover $tx_id' before retrying complete. The worktree, branch, and base are preserved."
     fi
   done
 }
@@ -828,40 +828,40 @@ close_restored_transaction_for() {
 close_worktree_gitlinks_clean() {
   local root="$1" line marker rest expected sm_path child status status_lines
   if ! status_lines="$(submodule_status_lines "$root")"; then
-    die "No se pudo verificar el estado de los submodules"
+    die "Could not verify submodule state"
   fi
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     marker="${line:0:1}"; rest="${line:1}"; expected="${rest%% *}"; sm_path="${rest#* }"; sm_path="${sm_path%% *}"
     case "$marker" in
-      +|U) die "Submodule '$sm_path' tiene cambios o conflicto" ;;
-      -) [[ "$CLOSE_INIT_REQUESTED" == false ]] || die "Submodule '$sm_path' no está inicializado aunque fue solicitado"; continue ;;
+      +|U) die "Submodule '$sm_path' has changes or a conflict" ;;
+      -) [[ "$CLOSE_INIT_REQUESTED" == false ]] || die "Submodule '$sm_path' not is initialized aunque fue solicitado"; continue ;;
     esac
     child="$root/$sm_path"
     status="$(git -C "$child" status --porcelain=v1 --untracked-files=all --ignored 2>/dev/null || true)"
-    [[ -z "$status" ]] || die "Submodule '$sm_path' tiene cambios locales"
-    [[ "$(git -C "$child" rev-parse HEAD 2>/dev/null || true)" == "$expected" ]] || die "Submodule '$sm_path' diverge de su gitlink"
+    [[ -z "$status" ]] || die "Submodule '$sm_path' has changes locales"
+    [[ "$(git -C "$child" rev-parse HEAD 2>/dev/null || true)" == "$expected" ]] || die "Submodule '$sm_path' diverges from its gitlink"
   done <<< "$status_lines"
 }
 
 close_verify_deinitialized() {
   local root="$1" expected_gitdir line marker rest sm_path child status_lines
   expected_gitdir="$(git rev-parse --path-format=absolute --git-path modules 2>/dev/null || true)"
-  [[ "$expected_gitdir" == "$GIT_COMMON_DIR/modules" ]] || die "El almacenamiento de módulos no coincide con el repositorio común"
+  [[ "$expected_gitdir" == "$GIT_COMMON_DIR/modules" ]] || die "Module storage does not match the common repository"
   if ! status_lines="$(submodule_status_lines "$root")"; then
-    die "No se pudo verificar el estado de los submodules"
+    die "Could not verify submodule state"
   fi
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     marker="${line:0:1}"; rest="${line:1}"; sm_path="${rest#* }"; sm_path="${sm_path%% *}"
-    [[ "$marker" == "-" ]] || die "El submodule '$sm_path' sigue inicializado después de deinit"
+    [[ "$marker" == "-" ]] || die "Submodule '$sm_path' remains initialized after deinit"
     child="$root/$sm_path"
-    [[ ! -e "$child/.git" && ! -d "$child/.git" ]] || die "El checkout del submodule '$sm_path' sigue activo"
-    [[ -z "$(find "$child" -mindepth 1 -name .git -print -quit 2>/dev/null)" ]] || die "Un checkout nested de '$sm_path' sigue activo"
+    [[ ! -e "$child/.git" && ! -d "$child/.git" ]] || die "Submodule '$sm_path' checkout is still active"
+    [[ -z "$(find "$child" -mindepth 1 -name .git -print -quit 2>/dev/null)" ]] || die "Nested checkout of '$sm_path' is still active"
   done <<< "$status_lines"
   while read -r _ sm_path; do
     [[ -n "$sm_path" ]] || continue
-    [[ ! -e "$root/$sm_path/.git" && ! -d "$root/$sm_path/.git" ]] || die "El checkout nested '$sm_path' sigue activo"
+    [[ ! -e "$root/$sm_path/.git" && ! -d "$root/$sm_path/.git" ]] || die "Nested checkout '$sm_path' is still active"
   done < <(submodule_gitlinks "$root")
 }
 
@@ -869,61 +869,61 @@ close_preflight() {
   local work_id="$1" base="$2" preserve_flag="$3" branch="$CLOSE_BRANCH" path_abs="$CLOSE_PATH"
   local problems="" staged_files="" unstaged_files="" untracked_files="" status_line line own_commits stash_entries worktree_common
   validate_identity "$work_id"
-  [[ "$(git -C "$path_abs" rev-parse --show-toplevel 2>/dev/null)" == "$path_abs" ]] || die "El worktree no coincide con su raíz"
+  [[ "$(git -C "$path_abs" rev-parse --show-toplevel 2>/dev/null)" == "$path_abs" ]] || die "Worktree does not match its root"
   worktree_common="$(git -C "$path_abs" rev-parse --git-common-dir 2>/dev/null || true)"
   [[ "$worktree_common" = /* ]] || worktree_common="$path_abs/$worktree_common"
   worktree_common="$(cd -- "$worktree_common" 2>/dev/null && pwd -P || true)"
-  [[ "$worktree_common" == "$GIT_COMMON_DIR" ]] || die "El worktree no coincide con git-common-dir"
-  [[ "$(git -C "$path_abs" symbolic-ref -q HEAD)" == "refs/heads/$branch" ]] || die "La rama simbólica del worktree no coincide"
-  [[ "$(git -C "$path_abs" rev-parse HEAD)" == "$(git rev-parse "refs/heads/$branch")" ]] || die "HEAD del worktree no coincide con su rama"
-  [[ "$(git rev-parse "refs/heads/$branch")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de completar"
+  [[ "$worktree_common" == "$GIT_COMMON_DIR" ]] || die "Worktree does not match git-common-dir"
+  [[ "$(git -C "$path_abs" symbolic-ref -q HEAD)" == "refs/heads/$branch" ]] || die "Worktree symbolic branch does not match"
+  [[ "$(git -C "$path_abs" rev-parse HEAD)" == "$(git rev-parse "refs/heads/$branch")" ]] || die "Worktree HEAD does not match its branch"
+  [[ "$(git rev-parse "refs/heads/$branch")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before completion"
   status_line="$(git -C "$path_abs" status --porcelain --untracked-files=all)"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     if [[ "${line:0:2}" == '??' ]]; then untracked_files+="${line:3}"$'\n'; else [[ "${line:0:1}" != " " ]] && staged_files+="${line:3}"$'\n'; [[ "${line:1:1}" != " " ]] && unstaged_files+="${line:3}"$'\n'; fi
   done <<< "$status_line"
-  [[ -z "$staged_files" ]] || problems+=$'\n- Worktree: cambios staged:\n'"$staged_files"$'  Acción: crear el commit del worktree antes de reintentar.\n'
-  [[ -z "$unstaged_files" ]] || problems+=$'\n- Worktree: cambios unstaged:\n'"$unstaged_files"$'  Acción: crear el commit del worktree antes de reintentar.\n'
-  [[ -z "$untracked_files" ]] || problems+=$'\n- Worktree: archivos untracked:\n'"$untracked_files"$'  Acción: agregar y crear el commit del worktree antes de reintentar.\n'
+  [[ -z "$staged_files" ]] || problems+=$'\n- Worktree: staged changes:\n'"$staged_files"$'  Action: commit the worktree before retrying.\n'
+  [[ -z "$unstaged_files" ]] || problems+=$'\n- Worktree: changes unstaged:\n'"$unstaged_files"$'  Action: commit the worktree before retrying.\n'
+  [[ -z "$untracked_files" ]] || problems+=$'\n- Worktree: untracked files:\n'"$untracked_files"$'  Action: add and commit the worktree before retrying.\n'
   close_worktree_gitlinks_clean "$path_abs"
-  own_commits="$(git rev-list --count "$base..$branch")"; (( own_commits > 0 )) || problems+=$'\n- Worktree: falta crear el commit propio antes de completar.\n'
-  stash_entries="$(git stash list)"; [[ -z "$stash_entries" ]] || problems+=$'\n- Repositorio: hay stash pendiente.\n  Acción: resolver o restaurar los stashes de forma segura antes de reintentar.\n'
+  own_commits="$(git rev-list --count "$base..$branch")"; (( own_commits > 0 )) || problems+=$'\n- Worktree: missing its own commit before completion.\n'
+  stash_entries="$(git stash list)"; [[ -z "$stash_entries" ]] || problems+=$'\n- Repository: a stash is pending.\n  Action: safely resolve or restore the stashes before retrying.\n'
   parse_destination_status "$REPO_ROOT"
   if (( DEST_STAGED || DEST_UNSTAGED || DEST_UNTRACKED )); then
     consent_preserve_dirty "$preserve_flag" || dirty_destination_rejection "$work_id" "$base"
     detect_unsupported "$TMP_STATE_DIR/dest.tracked" || dirty_destination_rejection "$work_id" "$base"
   fi
-  [[ -z "$problems" ]] || die "No se puede completar '$work_id'; se detectaron problemas antes de integrar o limpiar:$problems"
+  [[ -z "$problems" ]] || die "Cannot complete '$work_id'; problems were detected before integration or cleanup:$problems"
 }
 
 close_merge_verified() {
   local base="$CLOSE_BASE_BRANCH" branch="$CLOSE_BRANCH" before="$CLOSE_BEFORE_HEAD" parents registered_path worktree_common worktree_head
-  [[ -d "$CLOSE_PATH" ]] || die "La fase merge_started perdió el worktree; no se modifica la base"
-  worktree_registered_for_path "$CLOSE_PATH" || die "La fase merge_started perdió el registro del worktree; no se modifica la base"
+  [[ -d "$CLOSE_PATH" ]] || die "merge_started phase lost the worktree; base is not modified"
+  worktree_registered_for_path "$CLOSE_PATH" || die "merge_started phase lost the worktree registration; base is not modified"
   registered_path="$(worktree_registered_for_branch "$branch" || true)"
-  [[ "$registered_path" == "$CLOSE_PATH" ]] || die "La fase merge_started no coincide con la rama registrada; no se modifica la base"
-  branch_exists "$branch" || die "La fase merge_started perdió la rama; no se modifica la base"
-  [[ "$(git -C "$CLOSE_PATH" rev-parse --show-toplevel 2>/dev/null || true)" == "$CLOSE_PATH" ]] || die "La fase merge_started tiene una raíz de worktree ambigua; no se modifica la base"
+  [[ "$registered_path" == "$CLOSE_PATH" ]] || die "merge_started phase does not match the registered branch; base is not modified"
+  branch_exists "$branch" || die "merge_started phase lost the branch; base is not modified"
+  [[ "$(git -C "$CLOSE_PATH" rev-parse --show-toplevel 2>/dev/null || true)" == "$CLOSE_PATH" ]] || die "merge_started phase has an ambiguous worktree root; base is not modified"
   worktree_common="$(git -C "$CLOSE_PATH" rev-parse --git-common-dir 2>/dev/null || true)"
   [[ "$worktree_common" = /* ]] || worktree_common="$CLOSE_PATH/$worktree_common"
   worktree_common="$(cd -- "$worktree_common" 2>/dev/null && pwd -P || true)"
-  [[ "$worktree_common" == "$CLOSE_COMMON_DIR" && "$worktree_common" == "$GIT_COMMON_DIR" ]] || die "La fase merge_started no coincide con git-common-dir; no se modifica la base"
-  [[ "$(git -C "$CLOSE_PATH" symbolic-ref -q HEAD 2>/dev/null || true)" == "refs/heads/$branch" ]] || die "La fase merge_started no coincide con HEAD; no se modifica la base"
+  [[ "$worktree_common" == "$CLOSE_COMMON_DIR" && "$worktree_common" == "$GIT_COMMON_DIR" ]] || die "merge_started phase does not match git-common-dir; base is not modified"
+  [[ "$(git -C "$CLOSE_PATH" symbolic-ref -q HEAD 2>/dev/null || true)" == "refs/heads/$branch" ]] || die "merge_started phase does not match HEAD; base is not modified"
   worktree_head="$(git -C "$CLOSE_PATH" rev-parse HEAD 2>/dev/null || true)"
-  [[ -n "$worktree_head" && "$worktree_head" == "$(git rev-parse "refs/heads/$branch")" ]] || die "La fase merge_started no coincide con la rama; no se modifica la base"
-  [[ "$(git rev-parse "refs/heads/$branch")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de reanudar el squash; no se modifica la base"
+  [[ -n "$worktree_head" && "$worktree_head" == "$(git rev-parse "refs/heads/$branch")" ]] || die "merge_started phase does not match the branch; base is not modified"
+  [[ "$(git rev-parse "refs/heads/$branch")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before resuming squash; base is not modified"
   if [[ -n "$CLOSE_SQUASH_SHA" ]]; then
-    [[ "$(git rev-parse "refs/heads/$base")" == "$CLOSE_SQUASH_SHA" ]] || die "El squash registrado no coincide con la base; estado ambiguo, no repito la integración"
+    [[ "$(git rev-parse "refs/heads/$base")" == "$CLOSE_SQUASH_SHA" ]] || die "Recorded squash does not match the base; ambiguous state, integration is not repeated"
     parents="$(git rev-list --parents -n 1 "$CLOSE_SQUASH_SHA")"
-    [[ "$(wc -w <<< "$parents" | tr -d ' ')" == 2 && "${parents#* }" == "$before" ]] || die "El squash registrado no coincide con el parent esperado"
-    [[ "$(git rev-list --count "$before..$CLOSE_SQUASH_SHA")" == 1 ]] || die "El squash registrado no es único"
+    [[ "$(wc -w <<< "$parents" | tr -d ' ')" == 2 && "${parents#* }" == "$before" ]] || die "Recorded squash does not match the expected parent"
+    [[ "$(git rev-list --count "$before..$CLOSE_SQUASH_SHA")" == 1 ]] || die "Recorded squash is not unique"
     return 0
   fi
-  [[ "$(git rev-parse "refs/heads/$base")" == "$before" ]] || die "El estado del squash es ambiguo; no repito la integración"
+  [[ "$(git rev-parse "refs/heads/$base")" == "$before" ]] || die "Squash state is ambiguous; integration is not repeated"
   close_test_counter squash
   if ! merge_squash_branch "$base" "$branch" "$before"; then
     git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
-    die "Conflicto al hacer squash-merge de '$branch' en '$base'; el worktree se conserva"
+    die "Conflict while squash-merging '$branch' into '$base'; the worktree is preserved"
   fi
   CLOSE_SQUASH_SHA="$SQUASH_SHA"; close_write_meta
 }
@@ -936,16 +936,16 @@ complete_worktree() {
   if [[ -d "$(close_dir_for "$work_id")" ]]; then
     close_load "$work_id"
   elif [[ -e "$(close_dir_for "$work_id")" ]]; then
-    die "El journal de cierre de '$work_id' está corrupto"
+    die "Close journal for '$work_id' is corrupt"
   else
     validate_identity "$work_id"; close_bootstrap "$work_id" "$base"
   fi
-  [[ "$CLOSE_BASE_BRANCH" == "$base" ]] || die "El journal de cierre usa otra rama base"
+  [[ "$CLOSE_BASE_BRANCH" == "$base" ]] || die "Close journal uses another base branch"
   complete_blocks_pending_manual "$work_id" "$CLOSE_BRANCH" "$CLOSE_PATH"
   if [[ "$CLOSE_PHASE" == closed ]]; then
-    [[ ! -e "$CLOSE_PATH" ]] || die "El journal cerrado tiene recursos reintroducidos"
-    worktree_registered_for_path "$CLOSE_PATH" && die "El journal cerrado tiene recursos reintroducidos"
-    branch_exists "$CLOSE_BRANCH" && die "El journal cerrado tiene una rama reintroducida"
+    [[ ! -e "$CLOSE_PATH" ]] || die "Closed journal has reintroduced resources"
+    worktree_registered_for_path "$CLOSE_PATH" && die "Closed journal has reintroduced resources"
+    branch_exists "$CLOSE_BRANCH" && die "Closed journal has a reintroduced branch"
     printf 'operation: complete\nresult: success\ncompleted: %s\nphase: closed\n' "$work_id"
     return 0
   fi
@@ -955,14 +955,14 @@ complete_worktree() {
     if [[ -n "$tx_id" ]]; then
       tx_dir="$(tx_dir_read "$tx_id")"
       CLOSE_SQUASH_SHA="$(meta_value "$tx_dir" squash_commit)"
-      [[ -n "$CLOSE_SQUASH_SHA" && "$(git rev-parse "refs/heads/$base")" == "$CLOSE_SQUASH_SHA" ]] || die "La transacción restaurada no coincide con el cierre"
+      [[ -n "$CLOSE_SQUASH_SHA" && "$(git rev-parse "refs/heads/$base")" == "$CLOSE_SQUASH_SHA" ]] || die "Restored transaction does not match the close"
       CLOSE_PARENT_RESTORE=restored_dirty
       [[ -z "$(git status --porcelain --untracked-files=all)" ]] && CLOSE_PARENT_RESTORE=restored_clean
       close_write_phase merged
     fi
   fi
   if [[ "$CLOSE_PHASE" == created || "$CLOSE_PHASE" == init_started ]]; then
-    close_init_from_record "$init_flag" || die "No se pudo inicializar los submodules; se conserva el worktree y el journal"
+    close_init_from_record "$init_flag" || die "Could not initialize submodules; the worktree and journal are preserved"
   fi
   if [[ "$CLOSE_PHASE" == initialized || "$CLOSE_PHASE" == created ]]; then
     # create records the initial branch tip, but complete must capture the
@@ -1012,40 +1012,40 @@ complete_worktree() {
     close_verify_deinitialized "$CLOSE_PATH"; close_crash_hook deinitialized_after; close_write_phase deinitialized
   fi
   if [[ "$CLOSE_PHASE" == deinit_started ]]; then
-    [[ -e "$CLOSE_PATH" ]] || die "La fase deinit_started perdió el worktree de forma ambigua"
-    worktree_registered_for_path "$CLOSE_PATH" || die "La fase deinit_started perdió el registro del worktree"
+    [[ -e "$CLOSE_PATH" ]] || die "deinit_started phase lost the worktree ambiguously"
+    worktree_registered_for_path "$CLOSE_PATH" || die "deinit_started phase lost the worktree registration"
     close_verify_deinitialized "$CLOSE_PATH"; close_crash_hook deinitialized_after; close_write_phase deinitialized
   fi
   if [[ "$CLOSE_PHASE" == deinitialized ]]; then
     close_write_phase remove_started; close_crash_hook remove_started
     close_test_counter remove
-    git worktree remove --force -- "$CLOSE_PATH" >/dev/null 2>&1 || die "No pude retirar el worktree cerrado; se conserva la rama"
-    [[ ! -e "$CLOSE_PATH" ]] || die "El worktree sigue existiendo después de remove"
-    worktree_registered_for_path "$CLOSE_PATH" && die "Git todavía registra el worktree retirado"
+    git worktree remove --force -- "$CLOSE_PATH" >/dev/null 2>&1 || die "Could not remove the closed worktree; the branch is preserved"
+    [[ ! -e "$CLOSE_PATH" ]] || die "Worktree still exists after remove"
+    worktree_registered_for_path "$CLOSE_PATH" && die "Git still registers the removed worktree"
     close_crash_hook removed_after; close_write_phase removed
   fi
   if [[ "$CLOSE_PHASE" == remove_started ]]; then
     if [[ -e "$CLOSE_PATH" ]] && worktree_registered_for_path "$CLOSE_PATH"; then
-      close_verify_deinitialized "$CLOSE_PATH"; close_test_counter remove; git worktree remove --force -- "$CLOSE_PATH" >/dev/null 2>&1 || die "No pude reanudar el retiro del worktree"
-      [[ ! -e "$CLOSE_PATH" ]] || die "El worktree sigue existiendo después de remove"
-      worktree_registered_for_path "$CLOSE_PATH" && die "Git todavía registra el worktree retirado"
+      close_verify_deinitialized "$CLOSE_PATH"; close_test_counter remove; git worktree remove --force -- "$CLOSE_PATH" >/dev/null 2>&1 || die "Could not resume worktree removal"
+      [[ ! -e "$CLOSE_PATH" ]] || die "Worktree still exists after remove"
+      worktree_registered_for_path "$CLOSE_PATH" && die "Git still registers the removed worktree"
     elif [[ -e "$CLOSE_PATH" ]] || worktree_registered_for_path "$CLOSE_PATH"; then
-      die "La fase remove_started tiene un efecto ambiguo; se conserva la rama"
+      die "remove_started phase has an ambiguous effect; branch is preserved"
     fi
-    branch_exists "$CLOSE_BRANCH" || die "La fase remove_started perdió la rama de forma ambigua"
-    [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió después del retiro; no avanzo el journal"
+    branch_exists "$CLOSE_BRANCH" || die "remove_started phase lost the branch ambiguously"
+    [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed after removal; journal is not advanced"
     close_crash_hook removed_after; close_write_phase removed
   fi
   if [[ "$CLOSE_PHASE" == removed || "$CLOSE_PHASE" == branch_cleanup_started ]]; then
-    [[ ! -e "$CLOSE_PATH" ]] || die "La rama no puede limpiarse mientras exista el worktree"
-    worktree_registered_for_path "$CLOSE_PATH" && die "Git todavía registra el worktree retirado"
+    [[ ! -e "$CLOSE_PATH" ]] || die "Branch cannot be cleaned while the worktree exists"
+    worktree_registered_for_path "$CLOSE_PATH" && die "Git still registers the removed worktree"
     [[ "$CLOSE_PHASE" == branch_cleanup_started ]] || { close_write_phase branch_cleanup_started; close_crash_hook branch_cleanup_started; }
     if branch_exists "$CLOSE_BRANCH"; then
-      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "La rama cambió antes de la limpieza del cierre"
+      [[ "$(git rev-parse "refs/heads/$CLOSE_BRANCH")" == "$CLOSE_ORIGIN_SHA" ]] || die "Branch changed before close cleanup"
       close_test_counter branch_cleanup
-      git update-ref -d "refs/heads/$CLOSE_BRANCH" "$CLOSE_ORIGIN_SHA" || die "No pude retirar la rama cerrada"
+      git update-ref -d "refs/heads/$CLOSE_BRANCH" "$CLOSE_ORIGIN_SHA" || die "Could not remove the closed branch"
     fi
-    branch_exists "$CLOSE_BRANCH" && die "La rama cerrada todavía existe"
+    branch_exists "$CLOSE_BRANCH" && die "Closed branch still exists"
     close_crash_hook branch_cleanup_after; close_write_phase closed
   fi
   printf 'operation: complete\nresult: success\n%smerge: success\ncompleted: %s\nbranch: %s\nbase_branch: %s\nworktree: %s/\n' "${tx_id:+preserve: $tx_id\n}" "$work_id" "$CLOSE_BRANCH" "$base" "$path"
@@ -1053,11 +1053,11 @@ complete_worktree() {
 
 dirty_destination_rejection() {
   local work_id="$1" base="$2"
-  printf '%s\n' "Advertencia: no se puede completar '$work_id': el destino tiene cambios sin commitear." >&2
-  printf '%s\n' "El cierre fue cancelado; no se modificó nada." >&2
-  printf '%s\n' "Para reintentar con un merge seguro preservando cambios locales, ejecutá:" >&2
+  printf '%s\n' "Warning: cannot complete '$work_id': destination has uncommitted changes." >&2
+  printf '%s\n' "Close was cancelled; nothing was modified." >&2
+  printf '%s\n' "To retry with a safe merge while preserving local changes:" >&2
   printf '%s\n' "  worktree.sh complete '$work_id' --base '$base' --preserve-dirty" >&2
-  printf '%s\n' "--preserve-dirty respalda temporalmente los cambios staged, unstaged y untracked, ejecuta el merge y los restaura; no crea un commit." >&2
+  printf '%s\n' "--preserve-dirty temporarily backs up staged, unstaged, and untracked changes, runs the merge, and restores them; it does not create a commit." >&2
   exit 1
 }
 
@@ -1070,20 +1070,20 @@ recover_transaction() {
   # of merged or restored.
   local tx_id="$1" expected_work_id="$2"
   local tx_dir phase work_id base branch path_abs origin_sha squash before
-  tx_dir="$(tx_dir_read "$tx_id")" || die "No existe la transacción '$tx_id'"
-  phase="$(journal_read "$tx_dir" || true)"; case "$phase" in captured|merge_started|merged|pending_manual|restored) ;; *) die "La transacción '$tx_id' no tiene un journal válido" ;; esac
+  tx_dir="$(tx_dir_read "$tx_id")" || die "Transaction '$tx_id' does not exist"
+  phase="$(journal_read "$tx_dir" || true)"; case "$phase" in captured|merge_started|merged|pending_manual|restored) ;; *) die "Transaction '$tx_id' has not valid journal" ;; esac
   work_id="$(meta_value "$tx_dir" work_id)"; base="$(meta_value "$tx_dir" base_branch)"; branch="$(meta_value "$tx_dir" branch)"; path_abs="$(meta_value "$tx_dir" path)"; origin_sha="$(meta_value "$tx_dir" origin_sha)"; squash="$(meta_value "$tx_dir" squash_commit)"
   validate_work_id "$work_id"
-  # Discrepancia bajo lock: el candidato cambió mientras esperábamos el recurso.
-  [[ "$work_id" == "$expected_work_id" ]] || die "La transacción '$tx_id' cambió de identidad mientras se tomaban los locks; no toco nada"
-  [[ -n "$branch" ]] || branch="$(worktree_branch_for "$work_id")"; [[ -n "$path_abs" ]] || path_abs="$(worktree_path_abs_for "$work_id")"; [[ -n "$base" ]] || die "La transacción '$tx_id' tiene meta incompleto"; normalize_base_branch "$base"
-  [[ "$branch" == "$(worktree_branch_for "$work_id")" && "$path_abs" == "$(worktree_path_abs_for "$work_id")" ]] || die "La transacción '$tx_id' no coincide con su identidad"
+  # Discrepancy under lock: candidate changed while we were waiting for the resource.
+  [[ "$work_id" == "$expected_work_id" ]] || die "Transaction '$tx_id' changed identity while locks were acquired; nothing is touched"
+  [[ -n "$branch" ]] || branch="$(worktree_branch_for "$work_id")"; [[ -n "$path_abs" ]] || path_abs="$(worktree_path_abs_for "$work_id")"; [[ -n "$base" ]] || die "Transaction '$tx_id' has incomplete metadata"; normalize_base_branch "$base"
+  [[ "$branch" == "$(worktree_branch_for "$work_id")" && "$path_abs" == "$(worktree_path_abs_for "$work_id")" ]] || die "Transaction '$tx_id' does not match its identity"
   [[ "$phase" != pending_manual ]] || { print_pending_manual_instructions "$tx_id"; return 1; }
-  [[ "$phase" != restored ]] || { printf 'La transacción %s ya fue restaurada; no hay nada pendiente.\n' "$tx_id"; return 0; }
+  [[ "$phase" != restored ]] || { printf 'Transaction %s was already restored; nothing is pending.\n' "$tx_id"; return 0; }
   if [[ "$phase" == captured ]]; then clean_destination "$tx_dir"; fi
   if [[ "$phase" == captured || "$phase" == merge_started ]]; then
-    branch_exists "$branch" || die "La rama '$branch' ya no existe; no puedo completar la recuperación de '$tx_id'"
-    before="$(git rev-parse HEAD)"; merge_squash_branch "$base" "$branch" "$before" || { git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true; journal_write "$tx_dir" merge_started; die "Conflicto al reintentar la fusión para '$tx_id'; la transacción sigue en fase merge_started."; }
+    branch_exists "$branch" || die "Branch '$branch' no longer exists; cannot complete recovery of '$tx_id'"
+    before="$(git rev-parse HEAD)"; merge_squash_branch "$base" "$branch" "$before" || { git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true; journal_write "$tx_dir" merge_started; die "Conflict while retrying the merge for '$tx_id'; transaction remains in merge_started phase."; }
     squash="$SQUASH_SHA"; printf 'squash_commit: %s\n' "$squash" >> "$tx_dir/meta"; journal_write "$tx_dir" merged
   fi
   TX_TRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id")" || true)"; TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "$(backup_ref_for "$tx_id-untracked")" || true)"
@@ -1093,7 +1093,7 @@ recover_transaction() {
   # recover.  It exists only inside `complete`, so a recovery can never retire a
   # worktree or branch through the internal path; use the public cleanup instead.
   printf 'operation: recover\nresult: success\nrecovered: %s\n' "$tx_id"
-  [[ -n "$squash" ]] && printf 'recursos: intactos; retiralos con cleanup %s --discard si ya no los necesitás.\n' "$work_id"
+  [[ -n "$squash" ]] && printf 'resources: intact; remove them with cleanup %s --discard if no longer needed.\n' "$work_id"
   return 0
 }
 
@@ -1101,12 +1101,12 @@ create_worktree() {
   local work_id="$1" base="$2" init_submodules="$3" branch path_abs path rel prepare verify
   CLOSE_OPERATION=create
   validate_work_id "$work_id"; normalize_base_branch "$base"; branch="$(worktree_branch_for "$work_id")"; path_abs="$(worktree_path_abs_for "$work_id")"; path="$(worktree_path_for "$work_id")"
-  if (( CREATE_PREPARE == 1 )) && [[ -z "$PREPARE_COMMAND" ]]; then die "--prepare requiere prepare_command en la configuración"; fi
-  if (( CREATE_VERIFY == 1 )) && [[ -z "$VERIFY_COMMAND" ]]; then die "--verify requiere verify_command en la configuración"; fi
-  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "La rama de trabajo '$branch' es inválida"
-  branch_exists "$branch" && die "La rama '$branch' ya existe; resolvé el duplicado antes de crear un worktree nuevo"
-  [[ ! -e "$path_abs" ]] || die "La ruta '$path' ya existe; limpiá el directorio antes de crear el worktree"
-  ensure_ignored_local_path "$path_abs"; mkdir -p -- "$(dirname -- "$path_abs")"; git worktree add -b "$branch" "$path_abs" "$base" >/dev/null
+  if (( CREATE_PREPARE == 1 )) && [[ -z "$PREPARE_COMMAND" ]]; then die "--prepare requires prepare_command in the configuration"; fi
+  if (( CREATE_VERIFY == 1 )) && [[ -z "$VERIFY_COMMAND" ]]; then die "--verify requires verify_command in the configuration"; fi
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "Worktree branch '$branch' is invalid"
+  branch_exists "$branch" && die "Branch '$branch' already exists; resolve the duplicate before creating a new worktree"
+  [[ ! -e "$path_abs" ]] || die "Path '$path' already exists; clean the directory before creating the worktree"
+  ensure_ignored_local_path "$path_abs"; mkdir -p -- "$(dirname -- "$path_abs")"; LC_ALL=C git worktree add -b "$branch" "$path_abs" "$base" >/dev/null
   validate_identity "$work_id"
   close_bootstrap "$work_id" "$base"
   if [[ "$init_submodules" == true ]]; then
@@ -1123,9 +1123,9 @@ cleanup_worktree() {
   validate_work_id "$work_id"; branch="$(worktree_branch_for "$work_id")"; path_abs="$(worktree_path_abs_for "$work_id")"; validate_identity "$work_id"; path="$(worktree_path_for "$work_id")"
   status="$(git -C "$path_abs" status --porcelain --untracked-files=all)"; own_commits="$(git rev-list --count "$base..$branch" 2>/dev/null || printf 0)"
   if [[ -n "$status" || "$own_commits" -gt 0 ]]; then
-    (( discard )) || die "No se puede limpiar '$work_id': conserva cambios o commits propios; usá --discard con autorización explícita"
+    (( discard )) || die "Cannot clean '$work_id': it has changes or own commits; use --discard with explicit authorization"
   fi
-  if (( discard )); then git worktree remove --force -- "$path_abs" || die "No pude retirar el worktree para '$work_id'"; git branch -D -- "$branch" || die "No pude retirar la rama '$branch'"; else git worktree remove -- "$path_abs" || die "No pude retirar el worktree para '$work_id'"; git branch -d -- "$branch" || die "No pude retirar la rama '$branch'"; fi
+  if (( discard )); then git worktree remove --force -- "$path_abs" || die "Could not remove the worktree for '$work_id'"; git branch -D -- "$branch" || die "Could not remove the branch '$branch'"; else git worktree remove -- "$path_abs" || die "Could not remove the worktree for '$work_id'"; git branch -d -- "$branch" || die "Could not remove the branch '$branch'"; fi
   printf 'operation: cleanup\nresult: success\ncleanup: success\nremoved_worktree: 1\nremoved_branch: 1\ncleaned: %s\nbranch: %s\nworktree: %s/\n' "$work_id" "$branch" "$path"
 }
 
@@ -1154,12 +1154,12 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/worktree-manager-tar
 
 usage() {
   cat <<'EOF'
-Uso:
-  worktree.sh [--repo <directorio-absoluto>] [--config <archivo-absoluto>] create <work-id> [--base <branch>] [--init-submodules] [--prepare] [--verify]
-  worktree.sh [globales] complete <work-id> [--base <branch>] [--init-submodules] [--preserve-dirty]
-  worktree.sh [globales] cleanup <work-id> [--base <branch>] [--discard]
-  worktree.sh [globales] recover [<transaction-id>]
-  worktree.sh [globales] prune | list
+  Usage:
+  worktree.sh [--repo <absolute-directory>] [--config <absolute-file>] create <work-id> [--base <branch>] [--init-submodules] [--prepare] [--verify]
+  worktree.sh [global-options] complete <work-id> [--base <branch>] [--init-submodules] [--preserve-dirty]
+  worktree.sh [global-options] cleanup <work-id> [--base <branch>] [--discard]
+  worktree.sh [global-options] recover [<transaction-id>]
+  worktree.sh [global-options] prune | list
 
   target-direct:
   worktree.sh --repo <submodule> --parent-repo <parent> create <work-id> --target submodule --submodule-path <REL> --base <branch> --link-parent staged-only
@@ -1168,7 +1168,7 @@ Uso:
   worktree.sh --repo <submodule> --parent-repo <parent> complete <work-id> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
   worktree.sh --repo <submodule> --parent-repo <parent> recover [<transaction-id>] --target submodule --submodule-path <REL> --link-parent staged-only
 
-La configuración es un archivo de datos key=value; nunca se ejecuta como shell.
+Configuration is a key=value data file; it is never executed as shell.
 EOF
 }
 
@@ -1181,8 +1181,8 @@ worktree_manager_main_legacy() {
   CREATE_PREPARE=0; CREATE_VERIFY=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --repo) [[ $# -ge 2 ]] || die "Falta el valor de --repo"; requested_repo="$2"; shift 2 ;;
-      --config) [[ $# -ge 2 ]] || die "Falta el valor de --config"; requested_config="$2"; shift 2 ;;
+      --repo) [[ $# -ge 2 ]] || die "Missing value for --repo"; requested_repo="$2"; shift 2 ;;
+      --config) [[ $# -ge 2 ]] || die "Missing value for --config"; requested_config="$2"; shift 2 ;;
       -*) break ;;
       *) break ;;
     esac
@@ -1192,24 +1192,24 @@ worktree_manager_main_legacy() {
   case "$command" in
     create)
       local work_id="${1:-}"; shift || true; base="$(detect_base_branch)"; init_submodules=false
-      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Falta la rama después de --base"; base="$2"; shift 2 ;; --init-submodules) init_submodules=true; shift ;; --prepare) CREATE_PREPARE=1; shift ;; --verify) CREATE_VERIFY=1; shift ;; *) die "Opción o argumento desconocido para create: $1" ;; esac; done
-      [[ -n "$work_id" ]] || die "Falta el identificador de trabajo"; acquire_locks create "work/$(encode_work_id "$work_id")"; trap release_locks EXIT; create_worktree "$work_id" "$base" "$init_submodules" ;;
+      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Missing branch after --base"; base="$2"; shift 2 ;; --init-submodules) init_submodules=true; shift ;; --prepare) CREATE_PREPARE=1; shift ;; --verify) CREATE_VERIFY=1; shift ;; *) die "Unknown option or argument for create: $1" ;; esac; done
+      [[ -n "$work_id" ]] || die "Missing worktree identifier"; acquire_locks create "work/$(encode_work_id "$work_id")"; trap release_locks EXIT; create_worktree "$work_id" "$base" "$init_submodules" ;;
     complete)
       local work_id="${1:-}" preserve=0 init_submodules=false; shift || true; base="$(detect_base_branch)"
-      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Falta la rama después de --base"; base="$2"; shift 2 ;; --init-submodules) init_submodules=true; shift ;; --preserve-dirty) preserve=1; shift ;; *) die "Opción o argumento desconocido para complete: $1" ;; esac; done
-      [[ -n "$work_id" ]] || die "Falta el identificador de trabajo"; TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/worktree-manager.XXXXXX")"; trap 'cleanup_tmp_state; release_locks' EXIT; acquire_locks complete destination "work/$(encode_work_id "$work_id")"
+      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Missing branch after --base"; base="$2"; shift 2 ;; --init-submodules) init_submodules=true; shift ;; --preserve-dirty) preserve=1; shift ;; *) die "Unknown option or argument for complete: $1" ;; esac; done
+      [[ -n "$work_id" ]] || die "Missing worktree identifier"; TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/worktree-manager.XXXXXX")"; trap 'cleanup_tmp_state; release_locks' EXIT; acquire_locks complete destination "work/$(encode_work_id "$work_id")"
       complete_worktree "$work_id" "$base" "$preserve" "$init_submodules" ;;
     cleanup)
       local work_id="${1:-}" discard=0; shift || true; base="$(detect_base_branch)"
-      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Falta la rama después de --base"; base="$2"; shift 2 ;; --discard) discard=1; shift ;; *) die "Opción o argumento desconocido para cleanup: $1" ;; esac; done
-      [[ -n "$work_id" ]] || die "Falta el identificador de trabajo"; normalize_base_branch "$base"; acquire_locks cleanup "work/$(encode_work_id "$work_id")"; trap release_locks EXIT; cleanup_worktree "$work_id" "$discard" "$base" ;;
+      while [[ $# -gt 0 ]]; do case "$1" in --base) [[ $# -ge 2 ]] || die "Missing branch after --base"; base="$2"; shift 2 ;; --discard) discard=1; shift ;; *) die "Unknown option or argument for cleanup: $1" ;; esac; done
+      [[ -n "$work_id" ]] || die "Missing worktree identifier"; normalize_base_branch "$base"; acquire_locks cleanup "work/$(encode_work_id "$work_id")"; trap release_locks EXIT; cleanup_worktree "$work_id" "$discard" "$base" ;;
     recover)
       local tx_id="${1:-}" tx_dir work_id
-      [[ $# -le 1 ]] || die "Argumentos desconocidos para recover"
+      [[ $# -le 1 ]] || die "Unknown arguments for recover"
       [[ -n "$tx_id" ]] || tx_id="$(latest_pending_tx_id || true)"
-      [[ -n "$tx_id" ]] || { printf '%s\n' "No hay transacciones de preservación pendientes."; return 0; }
-      [[ "$tx_id" != */* && "$tx_id" != .* && "$tx_id" != -* ]] || die "Identificador de transacción inválido"
-      tx_dir="$(tx_dir_read "$tx_id")" || die "No existe la transacción '$tx_id'"
+      [[ -n "$tx_id" ]] || { printf '%s\n' "No pending preservation transactions."; return 0; }
+      [[ "$tx_id" != */* && "$tx_id" != .* && "$tx_id" != -* ]] || die "Invalid transaction identifier"
+      tx_dir="$(tx_dir_read "$tx_id")" || die "Transaction '$tx_id' does not exist"
       # B2: resolve and validate the candidate work id BEFORE locking so the same
       # locks as `complete`/`cleanup --discard` can be taken lexicographically.
       work_id="$(meta_value "$tx_dir" work_id)"
@@ -1220,7 +1220,7 @@ worktree_manager_main_legacy() {
     prune) acquire_locks prune registry; trap release_locks EXIT; prune_worktrees ;;
     list) list_worktrees ;;
     ""|-h|--help|help) usage ;;
-    *) die "Comando desconocido: $command" ;;
+    *) die "Unknown command: $command" ;;
   esac
 }
 
@@ -1242,14 +1242,14 @@ worktree_manager_main() {
     case "$1" in
       --json) json=1; shift ;;
       --version|-V)
-        if [[ $# -ne 1 ]]; then usage_error='Opción --version no admite argumentos'; break; fi
+        if [[ $# -ne 1 ]]; then usage_error='--version does not accept arguments'; break; fi
         printf '%s\n' "$WORKTREE_MANAGER_VERSION"; return 0 ;;
       --repo|--config|--parent-repo)
-        if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then usage_error="Falta el valor de $1"; break; fi
+        if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then usage_error="Missing value for $1"; break; fi
         args+=("$1" "$2"); shift 2 ;;
       --) shift; args+=("$@"); break ;;
       -h|--help|help) args+=("$1"); shift ;;
-      -*) usage_error="Opción global desconocida: $1"; break ;;
+      -*) usage_error="Unknown global option: $1"; break ;;
       *) args+=("$1"); shift; args+=("$@"); break ;;
     esac
   done
@@ -1272,7 +1272,7 @@ worktree_manager_main() {
   case "$command" in
     create|complete|cleanup|recover|list|prune|link-parent|abort) ;;
     *)
-      usage_error="Comando desconocido o faltante: ${command:-<faltante>}"
+      usage_error="Unknown command: ${command:-<missing>}"
       if (( json )); then
         printf '{"contract_version":1,"tool_version":"%s","operation":"usage","result":"failure","data":{},"warnings":[],"error":{"code":"usage_error","message":' "$WORKTREE_MANAGER_VERSION"
         json_quote "$usage_error"; printf ',"exit_code":2}}\n'
@@ -1296,16 +1296,16 @@ worktree_manager_main() {
     result=failure
     case "$error $output" in
       *lock*|*ocupado*) code=4; error_code=resource_locked ;;
-      *conflict*|*conflicto*|*pending_manual*|*intervención*|*intervencion*) code=5; error_code=intervention_required; result=pending_intervention ;;
+      *conflict*|*conflict*|*pending_manual*|*intervention*|*intervencion*) code=5; error_code=intervention_required; result=pending_intervention ;;
       *permission*|*denied*|*permiso*) code=6; error_code=access_denied ;;
-      *dependencia*|*command\ not\ found*|*no\ se\ pudo\ ejecutar*) code=6; error_code=dependency_unavailable ;;
+      *dependency*|*command\ not\ found*|*could\ not\ execute*) code=6; error_code=dependency_unavailable ;;
       *identity*|*identidad*) code=3; error_code=identity_error ;;
-      *configuración*|*configuracion*|*config\ *) code=3; error_code=configuration_error ;;
-      *inválid*|*invalid*|*falta\ el\ valor*|*desconocid*) code=3; error_code=validation_error ;;
+      *configuration*|*configuration*|*config\ *) code=3; error_code=configuration_error ;;
+      *invalid*|*invalid*|*missing\ el\ value*|*unknown*) code=3; error_code=validation_error ;;
       *) code=5; error_code=operation_failed ;;
     esac
   else error_code=""; fi
-  if [[ "$operation" == recover && "$output" == *"No hay transacciones"* ]]; then result=no_pending_work; fi
+  if [[ "$operation" == recover && ( "$output" == *"No pending preservation transactions"* || "$output" == *"No transactions"* ) ]]; then result=no_pending_work; fi
   if [[ "$operation" == prune && "$output" == *"pruned: 0"* ]]; then result=no_pending_work; fi
   local data='' first=1 json_value
   # Convert the lifecycle's key/value records into typed operation data. The

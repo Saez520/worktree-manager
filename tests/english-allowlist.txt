@@ -1,0 +1,8 @@
+# category|literal|scope|reason|owner
+command-or-option|--repo, --config, --json, --help, --version|manager CLI|Public option names are machine-facing literals.|Worktree Manager
+command-or-option|create, complete, cleanup, recover, list, prune, link-parent, abort|manager CLI|Public command names are machine-facing literals.|Worktree Manager
+path-or-env|.worktrees, .worktree-manager.conf, WORKTREE_MANAGER_TEST_MODE|manager runtime|Paths and environment variables are compatibility literals.|Worktree Manager
+schema-or-code|contract_version, tool_version, operation, result, data, warnings, error, exit_code|JSON envelope|Schema keys and stable error fields must not be translated.|Worktree Manager
+identifier-or-object|worktree/, worktree-manager, pending_manual, no_pending_work|state and refs|Git refs, lifecycle values, and result enums are machine literals.|Worktree Manager
+external-or-protocol|Git porcelain, git version 2.54.0|external tools|External output and exact dependency versions are compatibility literals.|Worktree Manager
+fixture-data|worktree/sample, modules/target, staged-only|tests|Fixture values are not human-facing prose.|Worktree Manager
