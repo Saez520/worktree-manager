@@ -75,7 +75,8 @@ class WorktreeLifecycle:
         if (status or int(commits)>0) and not discard: raise ManagerError('intervention_required','Worktree has changes or commits; explicit discard consent is required',5)
         locks=LockManager(self.state_root/self.config.lock_dir)
         with locks:
-            locks.acquire([f'work/{self._lock_work_id(work_id)}'],'cleanup')
+            key=hashlib.sha256(str(self.config.repo_root.resolve()).encode()).hexdigest()
+            locks.acquire([f'repository-{key}',f'work/{self._lock_work_id(work_id)}'],'cleanup')
             # The identity and mutable worktree state are checked again after
             # lock acquisition; all expected rejection paths above precede the
             # test-only barrier and any lock creation.
@@ -200,14 +201,17 @@ class WorktreeLifecycle:
             self.journal.write_phase(tx,'pending_manual')
             raise ManagerError('intervention_required',f"Restore requires manual intervention; transaction {tx} and backups are retained",5) from exc
     def prune(self)->dict[str,int]:
+        common=Path(self.git.run(('rev-parse','--git-common-dir')).stdout.strip())
+        if not common.is_absolute(): common=(self.config.repo_root/common).resolve()
+        admin=common/'worktrees'
+        before_ids={entry.name for entry in admin.iterdir() if entry.is_dir()} if admin.is_dir() else set()
         before=self.git.run(('worktree','prune','--dry-run','--verbose'))
         eligible=[line for line in (before.stdout+before.stderr).splitlines() if line.strip()]
         key=hashlib.sha256(str(self.config.repo_root).encode()).hexdigest()
         locks=LockManager(self.state_root/self.config.lock_dir)
         with locks:
             locks.acquire([f'repository-{key}'],'prune')
-            after_preview=self.git.run(('worktree','prune','--dry-run','--verbose'))
-            eligible=[line for line in (after_preview.stdout+after_preview.stderr).splitlines() if line.strip()]
             self.git.run(('worktree','prune','--verbose'))
-            locks.release()
-        return {'pruned':len(eligible),'eligible_orphans':eligible}
+            after_ids={entry.name for entry in admin.iterdir() if entry.is_dir()} if admin.is_dir() else set()
+            pruned=len(before_ids-after_ids)
+        return {'pruned':pruned,'eligible_orphans':eligible}

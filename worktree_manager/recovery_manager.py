@@ -5,6 +5,8 @@ import json
 from .models import ManagerError, ResultKind
 from .transaction_journal import TransactionJournal
 from .git_repository import GitRepository
+from .lock_manager import LockManager
+import hashlib
 class RecoveryManager:
     def __init__(self,state_root: str|Path,repo_root: str|Path|None=None): self.journal=TransactionJournal(state_root); self.repo=GitRepository(repo_root) if repo_root else None
     def recover(self,transaction_id: str|None=None):
@@ -17,6 +19,18 @@ class RecoveryManager:
             if not pending: return ResultKind.NO_PENDING_WORK,None
             transaction_id=sorted(pending)[-1]
         phase=self.journal.read_phase(transaction_id)
+        if phase in {'restored','closed','aborted'}: return ResultKind.NO_PENDING_WORK,{'transaction_id':transaction_id,'phase':phase}
+        if self.repo is not None:
+            # Validate transaction existence before marking/acquiring the lock.
+            key=hashlib.sha256(str(self.repo.root.resolve()).encode()).hexdigest()
+            locks=LockManager(self.journal.root.parent/'locks')
+            with locks:
+                locks.acquire([f'repository-{key}'],'recover')
+                phase=self.journal.read_phase(transaction_id)
+                return self._recover_locked(transaction_id,phase)
+        return self._recover_locked(transaction_id,phase)
+
+    def _recover_locked(self,transaction_id,phase):
         if phase=='pending_manual':
             if self.repo is None: return ResultKind.PENDING_INTERVENTION,{'transaction_id':transaction_id,'phase':phase}
             try: meta=json.loads((self.journal.directory(transaction_id)/'meta.json').read_text(encoding='utf-8'))
