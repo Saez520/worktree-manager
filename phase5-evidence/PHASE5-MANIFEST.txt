@@ -1,0 +1,9 @@
+phase4_checksums_manifest_sha256=bd2a9ee66024cfdf779b3882a993be44ffbd56cb47081faeba361d1faf15d2b3
+phase4_snapshot=/private/tmp/worktree-manager-phase-4-snapshot-final
+suite=python3 -m unittest discover -s tests
+parity=bash tests/parity.sh
+compile=python3 -m compileall -q worktree_manager tests
+shell=for each tests/*.sh: bash -n
+mcp_target_direct=tests/test_mcp_e2e.py (seven-tool MCP client matrix; real SIGKILL recovery => blocked/intervention_required then phase blocked; descriptor and parent index snapshot preserved byte-for-byte; repeated MCP recover idempotent; MCP target-direct create + staged-only link prerequisite + MCP complete closes and removes target worktree while preserving parent HEAD/index)
+independent_rebuild=/private/tmp/worktree-manager-phase-4-rebuild-independent (fresh copy from authorized snapshot; compileall, 23 unittest, phase4_compatibility.py 3 tests, compatibility.sh, and bash -n passed)
+results=38 unittest tests passed; prune dry-run E2E covers stale and no-work states without mutation; parity passed; compileall passed; bash -n passed; authorized Phase 4 SHA256SUMS verified; no Phase 4 files modified
