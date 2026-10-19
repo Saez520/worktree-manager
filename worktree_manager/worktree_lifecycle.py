@@ -89,7 +89,7 @@ class WorktreeLifecycle:
             self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
             self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
-    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None)->dict[str,str]:
+    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None)->dict[str,str]:
         """Squash a worktree branch and retire it only after verified success.
 
         Dirty-destination preservation is intentionally rejected until its capture
@@ -112,6 +112,8 @@ class WorktreeLifecycle:
         locks=LockManager(state/self.config.lock_dir)
         tx=transaction_id or uuid.uuid4().hex
         journal=TransactionJournal(state)
+        if (journal.directory(tx)/'binding.json').exists():
+            raise ManagerError('intervention_required','Transaction binding already exists; execute is blocked',5)
         before=self.git.head(); origin=self.git.run(('rev-parse',f'refs/heads/{branch}')).stdout.strip()
         meta={'work_id':work_id,'base':base,'branch':branch,'path':str(path),'before':before,'origin':origin,
               'preserve_dirty':bool(status),'tracked_ref':None,'untracked_ref':None,
@@ -133,7 +135,11 @@ class WorktreeLifecycle:
         with locks:
             locks.acquire([f'repository-{key}',f'work/{self._lock_work_id(work_id)}'],'complete')
             try:
-                journal.write_binding(tx, {'transaction_id':tx,'repo':str(self.config.repo_root),'work_id':work_id,'base':base,'before':before,'origin':origin,'phase':'prepared'})
+                journal.write_binding(tx, {'transaction_id':tx,'repo':str(self.config.repo_root.resolve()),'work_id':work_id,
+                    'operation':'worktree_complete','request':request or {},'plan_hash':plan_hash,
+                    'state_digest':__import__('worktree_manager.state_digest',fromlist=['state_digest']).state_digest(self.config.repo_root,state),
+                    'created_at':__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
+                    'phase':'prepared','base':base,'before':before,'origin':origin})
                 if status:
                     # Keep the original index/worktree as a Git stash commit and
                     # separately retain untracked files in a private tree ref.

@@ -20,23 +20,25 @@ def call(tool, request):
     git = GitRepository(root)
     if root != git.root:
         raise ManagerError("invalid_repository", "Repository identity mismatch", 3)
+    req["repo"] = str(root)
     dry = req.get("dry_run", False)
     if tool in DESTRUCTIVE and not dry and req.get("authorization") != "I_AUTHORIZE_THIS_CALL":
         raise ManagerError("authorization_required", "Explicit authorization for this call is required", 3)
     lifecycle = WorktreeLifecycle(Configuration.load(root))
     if tool in {"worktree_create", "worktree_complete", "worktree_cleanup", "worktree_prune"}:
+        if tool in {"worktree_create", "worktree_complete"}:
+            req["base"] = req.get("base") or next((b for b in ("development", "main", "trunk") if lifecycle.git.run(("show-ref", "--verify", "--quiet", f"refs/heads/{b}"), check=False).returncode == 0), "main")
+        if tool == "worktree_complete" and not req.get("transaction_id") and dry:
+            req["transaction_id"] = __import__("uuid").uuid4().hex
+        fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
+        def plan_for(digest):
+            return {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
         if dry:
-            if tool == "worktree_complete" and not req.get("transaction_id"):
-                req["transaction_id"] = __import__("uuid").uuid4().hex
             digest = state_digest(root, lifecycle.state_root)
-            fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
-            plan = {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
-            req["_computed_plan_hash"] = canonical_hash(plan)
+            req["_computed_plan_hash"] = canonical_hash(plan_for(digest))
         elif req.get("plan_hash"):
             digest = state_digest(root, lifecycle.state_root)
-            fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
-            plan = {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
-            if req["plan_hash"] != canonical_hash(plan):
+            if req["plan_hash"] != canonical_hash(plan_for(digest)):
                 raise ManagerError("plan_mismatch", "Repository state or request changed since preflight", 5)
     if "work_id" in req:
         validate_work_id(req["work_id"])
@@ -105,7 +107,7 @@ def call(tool, request):
             if lifecycle.git.run(("symbolic-ref", "--short", "HEAD")).stdout.strip()!=base: raise ManagerError("invalid_identity", f"Current branch must be '{base}'", 3)
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
             data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
-        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"))
+        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"), req.get("plan_hash"), req)
     elif tool == "worktree_cleanup":
         if req.get("discard") and req.get("discard_consent") is not True:
             raise ManagerError("discard_consent_required", "Separate explicit discard consent is required", 3)

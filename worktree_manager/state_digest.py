@@ -18,10 +18,12 @@ def repository_state(repo_root, state_root):
     index = Path(git("rev-parse", "--git-path", "index"))
     if not index.is_absolute(): index = root / index
     journal = []
-    if state.exists():
-        for entry in sorted(state.iterdir()):
+    transactions = state / "transactions"
+    if transactions.exists():
+        for entry in sorted(transactions.iterdir()):
             if not entry.is_dir(): continue
-            phase = (entry / "phase").read_text().strip() if (entry / "phase").is_file() else None
+            phase_path = entry / "journal"
+            phase = phase_path.read_text().strip() if phase_path.is_file() else None
             meta = (entry / "meta.json").read_bytes() if (entry / "meta.json").is_file() else b""
             binding = (entry / "binding.json").read_bytes() if (entry / "binding.json").is_file() else b""
             journal.append([entry.name, phase, hashlib.sha256(meta).hexdigest(), hashlib.sha256(binding).hexdigest()])
