@@ -9,7 +9,7 @@ from .lock_manager import LockManager
 import hashlib
 class RecoveryManager:
     def __init__(self,state_root: str|Path,repo_root: str|Path|None=None): self.journal=TransactionJournal(state_root); self.repo=GitRepository(repo_root) if repo_root else None
-    def recover(self,transaction_id: str|None=None):
+    def recover(self,transaction_id: str|None=None,work_id: str|None=None):
         if transaction_id is None:
             pending=[]
             for path in self.journal.root.glob('*/journal'):
@@ -22,6 +22,12 @@ class RecoveryManager:
         # This check must precede both journal parsing and the lock barrier.
         if not (self.journal.directory(transaction_id)/'journal').is_file():
             raise ManagerError('invalid_identity','Transaction does not exist',3)
+        if self.repo is not None:
+            binding=self.journal.read_binding(transaction_id)
+            if (binding.get('transaction_id')!=transaction_id or
+                binding.get('repo')!=str(self.repo.root.resolve()) or
+                (work_id is not None and binding.get('work_id')!=work_id)):
+                raise ManagerError('invalid_identity','Transaction binding does not match the requested identity',3)
         phase=self.journal.read_phase(transaction_id)
         if phase in {'restored','closed','aborted'}: return ResultKind.NO_PENDING_WORK,{'transaction_id':transaction_id,'phase':phase}
         if self.repo is not None:
@@ -31,6 +37,10 @@ class RecoveryManager:
             with locks:
                 locks.acquire([f'repository-{key}'],'recover')
                 phase=self.journal.read_phase(transaction_id)
+                current=self.journal.read_binding(transaction_id)
+                if (current.get('transaction_id')!=transaction_id or current.get('repo')!=str(self.repo.root.resolve()) or
+                    (work_id is not None and current.get('work_id')!=work_id)):
+                    raise ManagerError('invalid_identity','Transaction binding changed during recovery',3)
                 return self._recover_locked(transaction_id,phase)
         return self._recover_locked(transaction_id,phase)
 

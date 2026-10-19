@@ -155,6 +155,6 @@ def call(tool, request):
         else:
             git_dir = Path(git.run(("rev-parse", "--git-dir")).stdout.strip())
             if not git_dir.is_absolute(): git_dir = (root / git_dir).resolve()
-            kind, data = RecoveryManager(git_dir / lifecycle.config.state_dir, root).recover(req.get("transaction_id"))
+            kind, data = RecoveryManager(git_dir / lifecycle.config.state_dir, root).recover(req.get("transaction_id"),req.get("work_id"))
             return envelope(tool, str(root), kind, data, transaction_id=(data or {}).get("transaction_id"))
     return envelope(tool, str(root), data=data, transaction_id=data.get("transaction_id"))

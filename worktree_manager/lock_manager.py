@@ -23,7 +23,22 @@ class LockManager:
             path=self.root/name; path.parent.mkdir(parents=True,exist_ok=True)
             try: path.mkdir()
             except FileExistsError as exc:
-                self.release(); raise ManagerError('resource_locked',f"Resource '{name}' is locked",5) from exc
+                # A process crash can leave a directory lock behind. Reclaim
+                # only when its recorded local owner is demonstrably gone.
+                owner=path/'owner'
+                try:
+                    pid=int(owner.read_text(encoding='utf-8').splitlines()[0])
+                    os.kill(pid,0)
+                except ProcessLookupError:
+                    try: owner.unlink(missing_ok=True); path.rmdir(); path.mkdir()
+                    except OSError:
+                        self.release(); raise ManagerError('resource_locked',f"Resource '{name}' is locked",5) from exc
+                except (OSError, ValueError, IndexError):
+                    self.release(); raise ManagerError('resource_locked',f"Resource '{name}' is locked",5) from exc
+                except PermissionError:
+                    self.release(); raise ManagerError('resource_locked',f"Resource '{name}' is locked",5) from exc
+                else:
+                    self.release(); raise ManagerError('resource_locked',f"Resource '{name}' is locked",5) from exc
             self.held.append(path); (path/'owner').write_text(f'{os.getpid()}\n{socket.gethostname()}\n{operation}\n',encoding='utf-8')
         self._mark('lock_acquired')
     def release(self)->None:

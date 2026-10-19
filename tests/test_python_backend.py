@@ -27,6 +27,7 @@ class BackendTests(unittest.TestCase):
                   'before':before,'origin':before,'preserve_dirty':True}
             (journal.directory(tx)/'meta.json').write_text(json.dumps(meta))
             journal.write_phase(tx,'merge_started')
+            journal.write_binding(tx,{'transaction_id':tx,'repo':str(root.resolve()),'work_id':'feature'})
             (journal.directory(tx)/'lock').write_text('owned')
             for _ in range(2):
                 with self.assertRaises(ManagerError) as caught:
@@ -139,6 +140,7 @@ class BackendTests(unittest.TestCase):
                 'before':before,'origin':origin,'preserve_dirty':False,
                 'backup_ref_prefix':'worktree-manager/backups'}))
             journal.write_phase(tx,'merge_started')
+            journal.write_binding(tx,{'transaction_id':tx,'repo':str(root.resolve()),'work_id':'missing'})
             manager=RecoveryManager(state,root)
             result,data=manager.recover(tx)
             self.assertEqual(result.value,'no_pending_work'); self.assertIsNone(data)

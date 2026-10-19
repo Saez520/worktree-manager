@@ -78,6 +78,7 @@ class LocksPruneTests(unittest.TestCase):
         journal = TransactionJournal(self.lifecycle.state_root)
         journal.directory("done").mkdir(parents=True)
         journal.write_phase("done", "restored")
+        journal.write_binding("done", {"transaction_id": "done", "repo": str(self.root.resolve()), "work_id": "done"})
         seen = []
         original = LockManager.acquire
         def spy(manager, names, operation):
@@ -99,6 +100,7 @@ class LocksPruneTests(unittest.TestCase):
             "before": head, "origin": head, "preserve_dirty": False,
         }))
         journal.write_phase(tx, "merge_started")
+        journal.write_binding(tx, {"transaction_id": tx, "repo": str(self.root.resolve()), "work_id": "missing"})
         # Recovery reconciles the unchanged HEAD; it takes the repo lock and never replays squash.
         with patch.object(LockManager, "acquire", spy):
             kind, data = manager.recover(tx)
