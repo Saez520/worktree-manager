@@ -26,6 +26,9 @@ def _parser():
 def main(argv=None)->int:
     operation='usage'; json_mode='--json' in (argv if argv is not None else sys.argv[1:])
     try:
+        raw_argv = list(argv if argv is not None else sys.argv[1:])
+        if '--version' in raw_argv and any(arg not in {'--version', '--json'} for arg in raw_argv):
+            raise ManagerError('usage_error', "unrecognized arguments: extra arguments with --version", 2)
         args=_parser().parse_args(argv); operation=args.command
         if operation=='target-direct':
             target=Path(args.repo).expanduser().resolve() if args.repo else Path.cwd().resolve()

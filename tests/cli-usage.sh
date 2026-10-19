@@ -6,8 +6,11 @@ trap 'rm -rf "$tmp"' EXIT
 (cd "$tmp" && "$ROOT/worktree.sh" --version) | grep -qx '1.0.0'
 help="$(cd "$tmp" && "$ROOT/worktree.sh" --help)"
 printf '%s\n' "$help" | grep -q 'target-direct'
-printf '%s\n' "$help" | grep -q 'complete <work-id> --target submodule'
-printf '%s\n' "$help" | grep -q 'recover \[<transaction-id>\].*--target submodule'
+target_direct_help="$(cd "$tmp" && "$ROOT/worktree.sh" target-direct --help)"
+for command in create link-parent abort complete recover; do
+  printf '%s\n' "$target_direct_help" | grep -q "$command"
+done
+printf '%s\n' "$target_direct_help" | grep -q -- '--target'
 for args in '--json --wat' '--json bogus' '--json' '--json --repo' '--json --version extra'; do
   set +e
   (cd "$tmp" && "$ROOT/worktree.sh" $args) >"$tmp/out" 2>"$tmp/err"
