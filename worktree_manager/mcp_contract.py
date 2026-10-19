@@ -35,7 +35,7 @@ def validate_request(tool: str, request: dict) -> dict:
     repo = request["repo"]
     if not isinstance(repo, str) or not repo or not __import__("pathlib").Path(repo).is_absolute():
         raise ValueError("repo_must_be_absolute")
-    for key in ("dry_run", "discard", "preserve_dirty", "discard_consent", "target_direct"):
+    for key in ("dry_run", "discard", "preserve_dirty", "discard_consent", "target_direct", "confirm", "init_submodules", "prepare", "verify"):
         if key in request and type(request[key]) is not bool:
             raise ValueError(f"{key}_must_be_boolean")
     for key in ("work_id", "base", "transaction_id", "authorization", "parent_repo", "submodule_path"):
@@ -47,7 +47,18 @@ def validate_request(tool: str, request: dict) -> dict:
         raise ValueError("target_direct_requires_parent_and_submodule_path")
     if request.get("target_direct") and not request.get("parent_repo"):
         raise ValueError("target_direct_requires_parent_repo")
-    return request
+    normalized = dict(request)
+    has_confirm = "confirm" in normalized
+    confirm = normalized.pop("confirm", False)
+    if confirm:
+        if normalized.get("authorization") not in (None, "I_AUTHORIZE_THIS_CALL"):
+            raise ValueError("authorization_mismatch")
+        normalized["authorization"] = "I_AUTHORIZE_THIS_CALL"
+    elif has_confirm and normalized.get("authorization") == "I_AUTHORIZE_THIS_CALL":
+        raise ValueError("authorization_mismatch")
+    if "plan_hash" in normalized and (not isinstance(normalized["plan_hash"], str) or len(normalized["plan_hash"]) != 64 or any(c not in "0123456789abcdef" for c in normalized["plan_hash"])):
+        raise ValueError("plan_hash_must_be_sha256")
+    return normalized
 
 def output_schema():
     return {"type": "object", "required": ["contract_version", "tool_version", "operation", "repository", "result", "data", "warnings", "error", "transaction_id"], "properties": {
@@ -61,14 +72,3 @@ def envelope(operation, repo, result="success", data=None, warnings=None, error=
             "operation": operation, "repository": repo, "result": result,
             "data": data or {}, "warnings": warnings or [], "error": error,
             "transaction_id": transaction_id}
-    request = dict(request)
-    has_confirm = "confirm" in request
-    confirm = request.pop("confirm", False)
-    if type(confirm) is not bool:
-        raise ValueError("confirm_must_be_boolean")
-    if confirm:
-        if request.get("authorization") not in (None, "I_AUTHORIZE_THIS_CALL"):
-            raise ValueError("authorization_mismatch")
-        request["authorization"] = "I_AUTHORIZE_THIS_CALL"
-    elif has_confirm and request.get("authorization") == "I_AUTHORIZE_THIS_CALL":
-        raise ValueError("authorization_mismatch")
