@@ -88,8 +88,9 @@ class LocksPruneTests(unittest.TestCase):
         with patch.object(LockManager, "acquire", spy):
             with self.assertRaises(ManagerError) as caught:
                 manager.recover("missing")
-        self.assertEqual(caught.exception.code, "invalid_journal")
+        self.assertEqual(caught.exception.code, "invalid_identity")
         self.assertEqual(seen, [])
+        self.assertFalse(self.barrier.exists() and any(self.barrier.iterdir()))
         tx = "recover-no-replay"
         journal.directory(tx).mkdir(parents=True)
         head = self.git("rev-parse", "HEAD")

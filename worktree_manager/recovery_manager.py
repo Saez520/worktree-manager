@@ -18,6 +18,10 @@ class RecoveryManager:
                 except OSError: continue
             if not pending: return ResultKind.NO_PENDING_WORK,None
             transaction_id=sorted(pending)[-1]
+        # Distinguish an unknown transaction identity from a damaged journal.
+        # This check must precede both journal parsing and the lock barrier.
+        if not (self.journal.directory(transaction_id)/'journal').is_file():
+            raise ManagerError('invalid_identity','Transaction does not exist',3)
         phase=self.journal.read_phase(transaction_id)
         if phase in {'restored','closed','aborted'}: return ResultKind.NO_PENDING_WORK,{'transaction_id':transaction_id,'phase':phase}
         if self.repo is not None:
