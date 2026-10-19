@@ -8,6 +8,7 @@ from .recovery_manager import RecoveryManager
 from .mcp_contract import validate_request, envelope
 from .worktree_lifecycle import validate_work_id
 from .target_direct_adapter import TargetDirectAdapter
+from .state_digest import state_digest, canonical_hash
 import hashlib
 import subprocess
 
@@ -23,6 +24,20 @@ def call(tool, request):
     if tool in DESTRUCTIVE and not dry and req.get("authorization") != "I_AUTHORIZE_THIS_CALL":
         raise ManagerError("authorization_required", "Explicit authorization for this call is required", 3)
     lifecycle = WorktreeLifecycle(Configuration.load(root))
+    if tool in {"worktree_create", "worktree_complete", "worktree_cleanup", "worktree_prune"}:
+        if dry:
+            if tool == "worktree_complete" and not req.get("transaction_id"):
+                req["transaction_id"] = __import__("uuid").uuid4().hex
+            digest = state_digest(root, lifecycle.state_root)
+            fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
+            plan = {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
+            req["_computed_plan_hash"] = canonical_hash(plan)
+        elif req.get("plan_hash"):
+            digest = state_digest(root, lifecycle.state_root)
+            fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
+            plan = {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
+            if req["plan_hash"] != canonical_hash(plan):
+                raise ManagerError("plan_mismatch", "Repository state or request changed since preflight", 5)
     if "work_id" in req:
         validate_work_id(req["work_id"])
     def target_adapter(identity):
@@ -78,7 +93,7 @@ def call(tool, request):
                 rel = path.relative_to(root).as_posix()
                 if lifecycle.git.run(("check-ignore", "-q", "--", rel), check=False).returncode:
                     raise ManagerError("invalid_configuration", "Worktree path is not ignored", 3)
-            data = {"planned": True, "work_id": req["work_id"], "base": base, "path": str(path), "branch": branch, "preflight": "passed", "mutations": []}
+            data = {"planned": True, "work_id": req["work_id"], "base": base, "path": str(path), "branch": branch, "preflight": "passed", "mutations": [], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
         else:
             data = lifecycle.create(req["work_id"], base)
             data.update({"init_submodules":"false", "init_submodules_result":"not_requested", "prepare":"skipped", "verify":"skipped"})
@@ -89,8 +104,8 @@ def call(tool, request):
             if str(path) not in {item["path"] for item in lifecycle.list()} or not path.is_dir(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
             if lifecycle.git.run(("symbolic-ref", "--short", "HEAD")).stdout.strip()!=base: raise ManagerError("invalid_identity", f"Current branch must be '{base}'", 3)
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
-            data = {"planned": True, "work_id": req["work_id"], "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"]}
-        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False))
+            data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
+        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"))
     elif tool == "worktree_cleanup":
         if req.get("discard") and req.get("discard_consent") is not True:
             raise ManagerError("discard_consent_required", "Separate explicit discard consent is required", 3)
@@ -100,7 +115,7 @@ def call(tool, request):
             lifecycle._base(req.get("base", "main"))
             changed=bool(lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout)
             if changed and not req.get("discard"): raise ManagerError("intervention_required", "Worktree has changes; discard is required", 5)
-            data = {"planned": True, "work_id": req["work_id"], "discard": req.get("discard", False), "dirty": changed, "preflight": "passed", "mutations": ["remove_worktree", "delete_branch"]}
+            data = {"planned": True, "work_id": req["work_id"], "discard": req.get("discard", False), "dirty": changed, "preflight": "passed", "mutations": ["remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
         else: data = lifecycle.cleanup(req["work_id"], req.get("discard", False), req.get("base", "main"))
     elif tool == "worktree_prune":
         if dry:

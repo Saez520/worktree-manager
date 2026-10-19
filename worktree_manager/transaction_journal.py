@@ -1,6 +1,7 @@
 """Atomic transaction journal storage."""
 from __future__ import annotations
 import os, tempfile
+import json
 from pathlib import Path
 from .models import ManagerError
 PHASES = frozenset({'captured','merge_started','merged','pending_manual','restored','created','removed','closed','remove_started','captured_dirty','restoring'})
@@ -26,3 +27,10 @@ class TransactionJournal:
         phase=value.removesuffix('\n')
         if phase not in PHASES or '\n' in phase: raise ManagerError('invalid_journal','Transaction journal is corrupt',3)
         return phase
+    def write_binding(self, tx: str, binding: dict) -> None:
+        self._atomic(self.directory(tx)/'binding.json', json.dumps(binding,sort_keys=True,separators=(',',':'))+'\n')
+    def read_binding(self, tx: str) -> dict:
+        try: value=json.loads((self.directory(tx)/'binding.json').read_text(encoding='utf-8'))
+        except (OSError,ValueError) as exc: raise ManagerError('intervention_required','Transaction binding is unavailable or corrupt',5) from exc
+        if not isinstance(value,dict): raise ManagerError('intervention_required','Transaction binding is invalid',5)
+        return value

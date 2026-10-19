@@ -76,7 +76,7 @@ class WorktreeLifecycle:
         self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
         self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
-    def complete(self,work_id: str,base: str,preserve_dirty: bool=False)->dict[str,str]:
+    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None)->dict[str,str]:
         """Squash a worktree branch and retire it only after verified success.
 
         Dirty-destination preservation is intentionally rejected until its capture
@@ -97,7 +97,7 @@ class WorktreeLifecycle:
             raise ManagerError('intervention_required','Destination has uncommitted changes; use --preserve-dirty to retain them',5)
         state=self.state_root
         locks=LockManager(state/self.config.lock_dir)
-        tx=uuid.uuid4().hex
+        tx=transaction_id or uuid.uuid4().hex
         journal=TransactionJournal(state)
         before=self.git.head(); origin=self.git.run(('rev-parse',f'refs/heads/{branch}')).stdout.strip()
         meta={'work_id':work_id,'base':base,'branch':branch,'path':str(path),'before':before,'origin':origin,
@@ -114,10 +114,13 @@ class WorktreeLifecycle:
                 os.chmod(tmp,0o600); os.replace(tmp,meta_path)
             finally:
                 if os.path.exists(tmp): os.unlink(tmp)
+            if os.environ.get('WORKTREE_MANAGER_TEST_CRASH_AFTER_TRANSACTION_PHASE')==phase:
+                os._exit(86)
         key=hashlib.sha256(str(self.config.repo_root).encode()).hexdigest()
         with locks:
             locks.acquire([f'repository-{key}',f'work/{self._lock_work_id(work_id)}'],'complete')
             try:
+                journal.write_binding(tx, {'transaction_id':tx,'repo':str(self.config.repo_root),'work_id':work_id,'base':base,'before':before,'origin':origin,'phase':'prepared'})
                 if status:
                     # Keep the original index/worktree as a Git stash commit and
                     # separately retain untracked files in a private tree ref.
@@ -185,5 +188,14 @@ class WorktreeLifecycle:
             self.journal.write_phase(tx,'pending_manual')
             raise ManagerError('intervention_required',f"Restore requires manual intervention; transaction {tx} and backups are retained",5) from exc
     def prune(self)->dict[str,int]:
-        self.git.run(('worktree','prune'))
-        return {'pruned':0}
+        before=self.git.run(('worktree','prune','--dry-run','--verbose'))
+        eligible=[line for line in (before.stdout+before.stderr).splitlines() if line.strip()]
+        key=hashlib.sha256(str(self.config.repo_root).encode()).hexdigest()
+        locks=LockManager(self.state_root/self.config.lock_dir)
+        with locks:
+            locks.acquire([f'repository-{key}'],'prune')
+            after_preview=self.git.run(('worktree','prune','--dry-run','--verbose'))
+            eligible=[line for line in (after_preview.stdout+after_preview.stderr).splitlines() if line.strip()]
+            self.git.run(('worktree','prune','--verbose'))
+            locks.release()
+        return {'pruned':len(eligible),'eligible_orphans':eligible}

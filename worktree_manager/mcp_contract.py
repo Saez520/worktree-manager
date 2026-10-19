@@ -8,11 +8,11 @@ TOOL_NAMES = (
     "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
 )
 FIELDS = {
-    "worktree_create": {"repo", "work_id", "base", "dry_run", "parent_repo", "submodule_path"},
-    "worktree_complete": {"repo", "work_id", "base", "dry_run", "authorization", "preserve_dirty", "target_direct", "parent_repo"},
-    "worktree_cleanup": {"repo", "work_id", "base", "dry_run", "authorization", "discard", "discard_consent"},
-    "worktree_recover": {"repo", "transaction_id", "dry_run", "authorization", "target_direct", "parent_repo"},
-    "worktree_list": {"repo"}, "worktree_prune": {"repo", "dry_run", "authorization"},
+    "worktree_create": {"repo", "work_id", "base", "dry_run", "parent_repo", "submodule_path", "confirm", "plan_hash", "init_submodules", "prepare", "verify"},
+    "worktree_complete": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo"},
+    "worktree_cleanup": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "discard", "discard_consent"},
+    "worktree_recover": {"repo", "transaction_id", "dry_run", "authorization", "confirm", "target_direct", "parent_repo"},
+    "worktree_list": {"repo"}, "worktree_prune": {"repo", "dry_run", "authorization", "confirm", "plan_hash"},
     "worktree_status": {"repo", "work_id"},
 }
 REQUIRED = {
@@ -61,3 +61,14 @@ def envelope(operation, repo, result="success", data=None, warnings=None, error=
             "operation": operation, "repository": repo, "result": result,
             "data": data or {}, "warnings": warnings or [], "error": error,
             "transaction_id": transaction_id}
+    request = dict(request)
+    has_confirm = "confirm" in request
+    confirm = request.pop("confirm", False)
+    if type(confirm) is not bool:
+        raise ValueError("confirm_must_be_boolean")
+    if confirm:
+        if request.get("authorization") not in (None, "I_AUTHORIZE_THIS_CALL"):
+            raise ValueError("authorization_mismatch")
+        request["authorization"] = "I_AUTHORIZE_THIS_CALL"
+    elif has_confirm and request.get("authorization") == "I_AUTHORIZE_THIS_CALL":
+        raise ValueError("authorization_mismatch")

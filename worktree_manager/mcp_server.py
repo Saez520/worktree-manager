@@ -9,7 +9,9 @@ def schemas():
     from .mcp_contract import FIELDS, REQUIRED, output_schema
     props = {"repo": {"type": "string"}, "work_id": {"type": "string"},
              "base": {"type": "string"}, "transaction_id": {"type": "string"},
-             "authorization": {"type": "string", "enum": ["I_AUTHORIZE_THIS_CALL"]},
+              "authorization": {"type": "string", "enum": ["I_AUTHORIZE_THIS_CALL"]},
+              "confirm": {"type":"boolean"}, "plan_hash":{"type":"string"},
+              "init_submodules":{"type":"boolean"}, "prepare":{"type":"boolean"}, "verify":{"type":"boolean"},
              "dry_run": {"type": "boolean"}, "discard": {"type": "boolean"},
              "discard_consent": {"type": "boolean"}, "preserve_dirty": {"type": "boolean"}}
     props.update({"parent_repo": {"type": "string"}, "submodule_path": {"type": "string"},

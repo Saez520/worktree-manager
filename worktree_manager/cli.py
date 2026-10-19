@@ -1,6 +1,6 @@
 """Standalone Python command dispatcher."""
 from __future__ import annotations
-import argparse,sys,subprocess
+import argparse,sys,subprocess,json
 from pathlib import Path
 from .configuration import Configuration
 from .git_repository import GitRepository
@@ -27,6 +27,28 @@ def main(argv=None)->int:
     operation='usage'; json_mode='--json' in (argv if argv is not None else sys.argv[1:])
     try:
         raw_argv = list(argv if argv is not None else sys.argv[1:])
+        if '--request-json' in raw_argv:
+            from .mcp_operations import call
+            from .mcp_contract import TOOL_NAMES
+            pos=raw_argv.index('--request-json')
+            if pos+1>=len(raw_argv) or any(arg!='--json' for i,arg in enumerate(raw_argv) if i not in (pos,pos+1)):
+                raise ManagerError('usage_error','--request-json must be used alone (optionally with --json)',2)
+            source=raw_argv[pos+1]
+            try:
+                text=sys.stdin.read() if source=='-' else Path(source).read_text(encoding='utf-8')
+                request=json.loads(text)
+                if not isinstance(request,dict) or not isinstance(request.get('operation'),str): raise ValueError('operation_required')
+                operation=request.pop('operation')
+                tool=operation if operation.startswith('worktree_') else 'worktree_'+operation
+                if tool not in TOOL_NAMES: raise ValueError('unknown_tool')
+                result=call(tool,request)
+                sys.stdout.write(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n')
+                return 0 if not result.get('error') else result['error'].get('exit_code',5)
+            except (ValueError, OSError, json.JSONDecodeError) as exc:
+                code=2 if isinstance(exc,ManagerError) else 3
+                err=ManagerError('invalid_request',str(exc),code)
+                emit(OperationResult('request-json',ResultKind.FAILURE,error=err),True)
+                return err.exit_code
         if '--version' in raw_argv and any(arg not in {'--version', '--json'} for arg in raw_argv):
             raise ManagerError('usage_error', "unrecognized arguments: extra arguments with --version", 2)
         args=_parser().parse_args(argv); operation=args.command
