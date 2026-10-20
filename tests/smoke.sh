@@ -41,10 +41,12 @@ for retired in "${engine_prefix}core.sh" "${engine_prefix}target-direct.sh"; do
     exit 1
   fi
 done
+# The transition history records the retired surfaces as memory; it is the only
+# file excluded from the scan of the active guide.
 forbidden_pattern="${engine_prefix}[a-z-]*[.]sh|worktree[_]manager[_]main[_]legacy|target[-]direct[-]transport|refs[/]flowtask[/]backups|[.]flowtask[/]backups|runner[-]constructor[-]target[-]direct"
 if grep -R -E -n "$forbidden_pattern" \
     "$ROOT/worktree.sh" "$ROOT/worktree_manager" "$ROOT/tests" "$ROOT/docs" \
-    --exclude-dir=phase3-evidence --exclude-dir=phase5-evidence; then
+    --exclude=history-bash-to-python.md; then
   printf '%s\n' 'the active tree references a forbidden identifier' >&2
   exit 1
 fi

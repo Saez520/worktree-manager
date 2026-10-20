@@ -14,20 +14,24 @@ The default presentation is human-readable. `--json` explicitly selects one JSON
 
 `create` accepts `--init-submodules`, `--prepare` and `--verify`; they are off by default, so a repository without that configuration behaves exactly as before. The reported states are the observed ones: `init_submodules_result` is `not_requested` or `initialized`, and `prepare` and `verify` are `skipped`, `passed` or `failed`. `--prepare` and `--verify` require `prepare_command` and `verify_command` in the configuration; without them the request is rejected as `invalid_configuration` before any worktree or branch exists. A failing step keeps the worktree and its branch for inspection instead of discarding them.
 
+A dry run of `create` publishes `data.planned` as `true` and creates no worktree, no branch and no other mutation. Its reported states are the planned ones: `init_submodules_result` is `planned` or `not_requested`, and `prepare` and `verify` are `planned` or `skipped`. In an execution the states are the observed ones: `init_submodules_result` is `initialized` or `not_requested`, and `prepare` and `verify` are `passed`, `failed` or `skipped`.
+
 ## Compatibility and recovery
 
-The standalone commands are `create`, `complete`, `cleanup`, `recover`, `list`, and `prune`; target-direct operations include `link-parent`, `abort`, `complete`, and `recover`. Existing legacy invocations remain human-readable and preserve their legacy exit codes and `list` porcelain format. A failed destination-state restoration is reported as `pending_intervention`; preserve-dirty backups and transaction evidence are retained for human intervention. Invalid descriptor/drift, lock contention, absent dependencies, and access failures are failures, not successful recovery. A recover request does not discard state.
+The standalone commands are `create`, `complete`, `cleanup`, `recover`, `list`, and `prune`; target-direct operations include `create`, `link-parent`, `abort`, `complete`, and `recover`. In the target-direct syntax `--parent-repo` is placed after the action, and `--submodule-path` is required by `create`. Existing legacy invocations remain human-readable and preserve their legacy exit codes and `list` porcelain format. A failed destination-state restoration is reported as `pending_intervention`; preserve-dirty backups and transaction evidence are retained for human intervention. Invalid descriptor/drift, lock contention, absent dependencies, and access failures are failures, not successful recovery. A recover request does not discard state.
 
-## Verification record
+## Verification commands
 
-Re-executed from the standalone checkout on 2026-10-14 after the usage/help/fixture fixes (working tree based at `85500ce6a7f5bab76ad8ff969328242bcde047ed`):
+The suites that gate a publication of this repository are:
 
-| Command | Result |
-|---|---|
-| `bash tests/cli-usage.sh` | passed |
-| `bash tests/cli-json.sh` | passed |
-| `bash tests/compatibility.sh` | passed |
-| `bash tests/snapshot-and-contract.sh` | passed after snapshot-gate hardening |
-| `bash tests/smoke.sh` | passed |
+```sh
+bash tests/cli-usage.sh
+bash tests/cli-json.sh
+bash tests/compatibility.sh
+bash tests/smoke.sh
+bash tests/parity.sh
+PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
+```
 
-The usage suite additionally parses each `--json` pre-dispatch usage failure (unknown option, unknown/missing command, missing global value, and invalid `--version` arity), checks stable exit code 2, and checks help syntax for target-direct `complete` and `recover`. The compatibility suite is independent of any orchestration worktree path. Snapshot SHA-256 manifest validation and source HEAD/branch/index plus exact porcelain-status checks were executed by `tests/snapshot-and-contract.sh`; all reported `OK`. The snapshot is a manifest, raw index, patches, path inventory and metadata sufficient to reconstruct the recorded dirty state; it is not itself a checked-out working tree. This suite verifies recorded artifact integrity and source identity, not a fresh end-to-end reconstruction. This execution confirms the source identity and recorded status match the snapshot at test time; it does not certify every aspect of Phase 1 or perform a fresh checkout/reconstruction. No merge, complete, cleanup, discard, or other lifecycle operation was run on Phase 1. The source worktree remains outside the functional target. No claim is made here that the snapshot alone reconstructs submodule object stores unavailable locally.
+The usage suite parses each pre-dispatch usage failure, including the unknown option, the unknown or missing command, the missing global value and an invalid `--version` arity, checks the stable exit code `2`, and checks the help syntax of the target-direct `complete` and `recover` actions. The compatibility suite is independent of any orchestration worktree path. Every publication records the date, the commit and the output of these commands, and it does not cite a suite that no longer exists.

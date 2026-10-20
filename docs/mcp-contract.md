@@ -24,12 +24,18 @@ and `verify`. They are off by default and report the observed state of each
 step; `prepare` and `verify` require the matching configured command and are
 rejected as `invalid_configuration` before any worktree or branch is created.
 
-Mutating dry runs do not invoke lifecycle operations. Complete, cleanup,
-recover and prune require per-call `authorization: "I_AUTHORIZE_THIS_CALL"`;
-cleanup with discard additionally requires the separate boolean
-`discard_consent: true`.
-Authorization is not retained across requests. Do not expose this local service
-to untrusted clients. CLI JSON v1 and its entrypoint remain unchanged.
+Mutating dry runs do not invoke lifecycle operations. A per-call authorization is
+required only in an execution, that is, when `dry_run` is absent or `false`; a
+dry run of a destructive operation succeeds without it. A destructive execute
+accepts `authorization: "I_AUTHORIZE_THIS_CALL"` directly, or `confirm: true`,
+from which that authorization is derived. A `confirm: false` sent together with
+the literal is rejected as `authorization_mismatch`. A `cleanup` with a discard
+additionally requires the separate boolean `discard_consent: true`. A
+target-direct `create`, `complete` or `recover` has no safe simulation and is
+rejected as `unsupported_dry_run` with exit code `3` when a dry run is
+requested. Authorization is not retained across requests. Do not expose this
+local service to untrusted clients. CLI JSON v1 and its entrypoint remain
+unchanged.
 
 ## End-to-end verification
 
