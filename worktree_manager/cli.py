@@ -19,39 +19,61 @@ def _parser():
         p=sub.add_parser(name); p.add_argument('work_id'); p.add_argument('--base');
         if name=='cleanup': p.add_argument('--discard',action='store_true')
         if name=='complete': p.add_argument('--preserve-dirty',action='store_true')
+        if name=='create':
+            p.add_argument('--init-submodules',action='store_true'); p.add_argument('--prepare',action='store_true'); p.add_argument('--verify',action='store_true')
     p=sub.add_parser('recover'); p.add_argument('transaction_id',nargs='?')
     sub.add_parser('list'); sub.add_parser('prune')
     td=sub.add_parser('target-direct'); td.add_argument('action',choices=('create','link-parent','abort','complete','recover')); td.add_argument('work_id'); td.add_argument('--parent-repo',required=True); td.add_argument('--target',choices=('submodule',),default='submodule'); td.add_argument('--submodule-path'); td.add_argument('--base',default='main'); td.add_argument('--link-parent',choices=('staged-only',),default='staged-only'); td.add_argument('--descriptor')
     return parser
+
+def _request_json_mode(raw_argv):
+    """Serve the canonical protocol envelope for `--request-json` invocations.
+
+    Success and failure publish the same nine-key envelope used by the MCP
+    transport, with or without `--json`, so a client never has to parse two
+    different document shapes.
+    """
+    from .mcp_operations import call
+    from .mcp_contract import TOOL_NAMES,absolute_repository,error_envelope
+    pos=raw_argv.index('--request-json')
+    request=None; tool=None
+    def fail(code,message,exit_code):
+        operation=tool
+        if not operation and isinstance(request,dict) and isinstance(request.get('operation'),str):
+            operation=request['operation']
+        operation=operation or 'request-json'
+        repository=absolute_repository(request.get('repo')) if isinstance(request,dict) else ''
+        document=error_envelope(operation,repository,code,message,exit_code)
+        sys.stdout.write(json.dumps(document,sort_keys=True,separators=(',',':'))+'\n')
+        return exit_code
+    extra=[arg for index,arg in enumerate(raw_argv) if index not in (pos,pos+1) and arg!='--json']
+    if pos+1>=len(raw_argv) or extra:
+        return fail('usage_error','--request-json must be used alone (optionally with --json)',2)
+    source=raw_argv[pos+1]
+    try:
+        text=sys.stdin.read() if source=='-' else Path(source).read_text(encoding='utf-8')
+        request=json.loads(text)
+        if not isinstance(request,dict) or not isinstance(request.get('operation'),str): raise ValueError('operation_required')
+        # The protocol request is passed unchanged to the same strict
+        # validator and lifecycle façade used by MCP.
+        raw=request['operation']
+        tool=raw if raw in TOOL_NAMES else ('worktree_'+raw if 'worktree_'+raw in TOOL_NAMES else None)
+        if tool is None: raise ValueError('unknown_tool')
+        payload=dict(request); payload.pop('operation')
+        result=call(tool,payload)
+        sys.stdout.write(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n')
+        error=result.get('error')
+        return 0 if not error else error.get('exit_code',5)
+    except ManagerError as exc:
+        return fail(exc.code,str(exc),exc.exit_code)
+    except (ValueError,OSError) as exc:
+        return fail('invalid_request',str(exc),3)
 def main(argv=None)->int:
     operation='usage'; json_mode='--json' in (argv if argv is not None else sys.argv[1:])
     try:
         raw_argv = list(argv if argv is not None else sys.argv[1:])
         if '--request-json' in raw_argv:
-            from .mcp_operations import call
-            from .mcp_contract import TOOL_NAMES
-            pos=raw_argv.index('--request-json')
-            if pos+1>=len(raw_argv) or any(arg!='--json' for i,arg in enumerate(raw_argv) if i not in (pos,pos+1)):
-                raise ManagerError('usage_error','--request-json must be used alone (optionally with --json)',2)
-            source=raw_argv[pos+1]
-            try:
-                text=sys.stdin.read() if source=='-' else Path(source).read_text(encoding='utf-8')
-                request=json.loads(text)
-                if not isinstance(request,dict) or not isinstance(request.get('operation'),str): raise ValueError('operation_required')
-                # The protocol request is passed unchanged to the same strict
-                # validator and lifecycle façade used by MCP.
-                request=dict(request)
-                operation=request.pop('operation')
-                tool=operation if operation.startswith('worktree_') else 'worktree_'+operation
-                if tool not in TOOL_NAMES: raise ValueError('unknown_tool')
-                result=call(tool,request)
-                sys.stdout.write(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n')
-                return 0 if not result.get('error') else result['error'].get('exit_code',5)
-            except (ValueError, OSError, json.JSONDecodeError) as exc:
-                code=2 if isinstance(exc,ManagerError) else 3
-                err=ManagerError('invalid_request',str(exc),code)
-                emit(OperationResult('request-json',ResultKind.FAILURE,error=err),True)
-                return err.exit_code
+            return _request_json_mode(raw_argv)
         if '--version' in raw_argv and any(arg not in {'--version', '--json'} for arg in raw_argv):
             raise ManagerError('usage_error', "unrecognized arguments: extra arguments with --version", 2)
         args=_parser().parse_args(argv); operation=args.command
@@ -94,8 +116,7 @@ def main(argv=None)->int:
                 result=OperationResult(operation,ResultKind.NO_PENDING_WORK if data.get('pruned',0)==0 else ResultKind.SUCCESS,data=data)
             elif operation=='create':
                 base=args.base or next((b for b in ('development','main','trunk') if repository.run(('show-ref','--verify','--quiet',f'refs/heads/{b}'),check=False).returncode==0),'main')
-                data=lifecycle.create(args.work_id,base)
-                data.update({'init_submodules':'false','init_submodules_result':'not_requested','prepare':'skipped','verify':'skipped'})
+                data=lifecycle.create(args.work_id,base,init_submodules=args.init_submodules,prepare=args.prepare,verify=args.verify)
                 result=OperationResult(operation,data=data)
             elif operation=='cleanup': result=OperationResult(operation,data=lifecycle.cleanup(args.work_id,args.discard,args.base or 'main'))
             elif operation=='complete':

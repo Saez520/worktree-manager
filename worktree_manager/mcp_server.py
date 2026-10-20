@@ -1,7 +1,7 @@
 """Minimal stdio JSON-RPC server exposing the worktree management tools."""
 import json
 import sys
-from .mcp_contract import TOOL_NAMES
+from .mcp_contract import TOOL_NAMES, absolute_repository, error_envelope
 from .mcp_operations import call
 from .models import ManagerError
 
@@ -34,8 +34,10 @@ def dispatch(message):
             result = call(name, params.get("arguments", {}))
             return {"content": [{"type": "text", "text": json.dumps(result, sort_keys=True)}], "structuredContent": result, "isError": False}
         except Exception as exc:
-            err = {"code": getattr(exc, "code", "invalid_request"), "message": str(exc), "cause": type(exc).__name__, "action": "Check the request and repository state; no success is implied."}
-            result = {"contract_version": 1, "tool_version": "1.0.0", "operation": name, "repository": (params.get("arguments") or {}).get("repo"), "result": "failure", "data": {}, "warnings": [], "error": err, "transaction_id": None}
+            err = getattr(exc, "code", "invalid_request")
+            message = str(exc)
+            exit_code = getattr(exc, "exit_code", 3)
+            result = error_envelope(name or "", absolute_repository((params.get("arguments") or {}).get("repo")), err, message, exit_code)
             return {"content": [{"type": "text", "text": json.dumps(result, sort_keys=True)}], "structuredContent": result, "isError": True}
     raise ValueError("method_not_found")
 

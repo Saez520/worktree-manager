@@ -9,6 +9,7 @@ from pathlib import Path
 
 from mcp_client import McpClient
 from test_mcp_e2e import fixture, git, state
+from worktree_manager.mcp_contract import output_schema
 
 
 class DirectTransportMatrix(unittest.TestCase):
@@ -17,6 +18,7 @@ class DirectTransportMatrix(unittest.TestCase):
         "transaction_id", "plan_hash", "operation_repo", "transaction_hash",
         "repo_work_id", "confirm_hash", "three_dimensions",
     )
+    required = set(output_schema()["required"])
 
     def test_case_table_semantics(self):
         self.assertEqual(len(self.cases), 12)
@@ -43,10 +45,58 @@ class DirectTransportMatrix(unittest.TestCase):
                             self.assertTrue(cell["ok"], cell)
             self.assertEqual(len(evidence), 48)
             self.assertEqual(len({(x["transport"], x["repo"], x["case"]) for x in evidence}), 48)
+            self.assert_envelope_parity(evidence, repos)
             dest = os.environ.get("MCP_MATRIX_EVIDENCE")
             if dest:
                 Path(dest).parent.mkdir(parents=True, exist_ok=True)
                 Path(dest).write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
+
+    def assert_envelope_parity(self, evidence, repos):
+        """Both transports must publish the same envelope, not only the same code."""
+        cells = {(cell["transport"], cell["repo"], cell["case"]): cell for cell in evidence}
+        for cell in evidence:
+            envelope = cell["envelope"]
+            self.assertEqual(set(envelope), self.required, cell)
+        for name in repos:
+            for case in self.cases:
+                cli = cells[("cli", name, case)]["envelope"]
+                mcp = cells[("mcp", name, case)]["envelope"]
+                self.assertEqual(set(cli), set(mcp), (name, case))
+                self.assertEqual(set(cli.get("error") or {}), set(mcp.get("error") or {}), (name, case))
+                self.assertEqual(cli["operation"], mcp["operation"], (name, case))
+                self.assertEqual(cli["repository"], mcp["repository"], (name, case))
+                self.assertEqual(cli["result"], mcp["result"], (name, case))
+
+    def test_create_options_publish_the_same_envelope_over_both_transports(self):
+        with tempfile.TemporaryDirectory(prefix="mcp-matrix-options-") as temp:
+            repo = Path(temp) / "options"
+            fixture(repo)
+            (repo / ".worktree-manager.conf").write_text(
+                "state_dir=state\nbackup_dir=backups\nbackup_ref_prefix=manager/backups\n"
+                "branch_prefix=worktree/\nlock_dir=locks\n"
+                "prepare_command=printf prepared > prepared.txt\nverify_command=test -f prepared.txt\n")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "configure")
+            with McpClient() as mcp:
+                cli = self.invoke("cli", mcp, "worktree_create", {
+                    "repo": str(repo), "work_id": "options-cli", "base": "main",
+                    "prepare": True, "verify": True})
+                remote = self.invoke("mcp", mcp, "worktree_create", {
+                    "repo": str(repo), "work_id": "options-mcp", "base": "main",
+                    "prepare": True, "verify": True})
+            for envelope in (cli, remote):
+                self.assertEqual(set(envelope), self.required)
+                self.assertEqual(envelope["operation"], "worktree_create")
+                self.assertEqual(envelope["result"], "success")
+                self.assertEqual(envelope["data"]["prepare"], "passed")
+                self.assertEqual(envelope["data"]["verify"], "passed")
+                self.assertEqual(envelope["data"]["init_submodules"], "false")
+                self.assertEqual(envelope["data"]["init_submodules_result"], "not_requested")
+            self.assertEqual(set(cli), set(remote))
+            self.assertEqual(set(cli.get("error") or {}), set(remote.get("error") or {}))
+            self.assertEqual(cli["repository"], remote["repository"])
+            self.assertTrue((repo / ".worktrees/options-cli/prepared.txt").is_file())
+            self.assertTrue((repo / ".worktrees/options-mcp/prepared.txt").is_file())
 
     def run_cell(self, transport, case, name, repo, other, mcp):
         work_id = f"matrix-{transport}-{name}-{case}".replace("_", "-")

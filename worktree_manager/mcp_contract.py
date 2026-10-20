@@ -1,6 +1,8 @@
 """Strict, versioned JSON contracts for the worktree management service."""
 from __future__ import annotations
 
+import pathlib
+
 CONTRACT_VERSION = 1
 TOOL_VERSION = "1.0.0"
 TOOL_NAMES = (
@@ -72,3 +74,20 @@ def envelope(operation, repo, result="success", data=None, warnings=None, error=
             "operation": operation, "repository": repo, "result": result,
             "data": data or {}, "warnings": warnings or [], "error": error,
             "transaction_id": transaction_id}
+
+def absolute_repository(value):
+    """Absolute form of a requested repository, or an empty string when unknown."""
+    if not isinstance(value, str) or not value:
+        return ""
+    path = pathlib.Path(value).expanduser()
+    try:
+        return str(path.resolve())
+    except (OSError, RuntimeError):
+        return str(path.absolute())
+
+def error_envelope(operation, repository, code, message, exit_code):
+    """Canonical envelope for a failed operation, shared by every transport."""
+    result = "pending_intervention" if code == "intervention_required" else "failure"
+    return envelope(operation, repository or "", result, data={}, warnings=[],
+                    error={"code": code, "message": message, "exit_code": exit_code},
+                    transaction_id=None)

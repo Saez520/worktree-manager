@@ -4,6 +4,7 @@ import re
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -47,8 +48,11 @@ class WorktreeLifecycle:
             elif line.startswith('branch '): branch=line[7:]
             elif not line and path is not None: result.append({'path':path,'branch':branch}); path=None
         return result
-    def create(self,work_id: str,base: str)->dict[str,str]:
+    def create(self,work_id: str,base: str,init_submodules: bool=False,prepare: bool=False,verify: bool=False)->dict[str,str]:
         branch=self._branch(work_id); base=self._base(base); path=self._path(work_id)
+        # The requested steps are validated before any mutation, so an
+        # unusable configuration never leaves a worktree or a branch behind.
+        self._validate_create_options(prepare,verify)
         if self.git.run(('show-ref','--verify','--quiet',f'refs/heads/{branch}'),check=False).returncode==0 or path.exists():
             raise ManagerError('operation_failed','Worktree branch or path already exists',5)
         if not Path(self.config.worktrees_dir).is_absolute():
@@ -65,7 +69,45 @@ class WorktreeLifecycle:
                 raise ManagerError('operation_failed','Worktree branch or path already exists',5)
             path.parent.mkdir(parents=True,exist_ok=True)
             self.git.run(('worktree','add','-b',branch,str(path),base))
-        return {'path':str(path),'branch':branch,'base_branch':base}
+        init_result='not_requested'
+        if init_submodules:
+            if self.git.run(('-C',str(path),'submodule','update','--init','--recursive'),check=False).returncode:
+                # The worktree and its branch are kept so the operator can
+                # inspect the partially initialized state and decide.
+                raise ManagerError('operation_failed','Submodule initialization failed; worktree and branch retained',5)
+            init_result='initialized'
+        prepare_state='skipped'; verify_state='skipped'
+        if prepare or self.config.prepare_enabled:
+            prepare_state='failed'
+            if not self._run_configured_action(self.config.prepare_command,path):
+                raise ManagerError('operation_failed','Prepare command failed; worktree and branch retained',5)
+            prepare_state='passed'
+        if verify or self.config.verify_enabled:
+            verify_state='failed'
+            if not self._run_configured_action(self.config.verify_command,path):
+                raise ManagerError('operation_failed','Verify command failed; worktree and branch retained',5)
+            verify_state='passed'
+        return {'path':str(path),'branch':branch,'base_branch':base,
+                'init_submodules':'true' if init_submodules else 'false',
+                'init_submodules_result':init_result,
+                'prepare':prepare_state,'verify':verify_state}
+    def _validate_create_options(self,prepare: bool,verify: bool)->None:
+        """Reject unusable prepare/verify configuration before mutating."""
+        if (prepare or self.config.prepare_enabled) and not self.config.prepare_command:
+            raise ManagerError('invalid_configuration','prepare requires prepare_command in the configuration',3)
+        if (verify or self.config.verify_enabled) and not self.config.verify_command:
+            raise ManagerError('invalid_configuration','verify requires verify_command in the configuration',3)
+    def _run_configured_action(self,command: str,path: Path)->bool:
+        """Run a configured repository action inside the new worktree."""
+        if not command: return False
+        for shell in ('bash','sh'):
+            try:
+                completed=subprocess.run([shell,'-c',command],cwd=str(path),text=True,
+                                         stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            except OSError:
+                continue
+            return completed.returncode==0
+        return False
     def cleanup(self,work_id: str,discard: bool=False,base: str='main')->dict[str,str]:
         branch=self._branch(work_id); path=self._path(work_id); self._base(base)
         registered={item['path'] for item in self.list()}

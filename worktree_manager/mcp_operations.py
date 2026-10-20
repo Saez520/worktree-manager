@@ -88,6 +88,7 @@ def call(tool, request):
         base = req.get("base") or next((b for b in ("development", "main", "trunk") if lifecycle.git.run(("show-ref", "--verify", "--quiet", f"refs/heads/{b}"), check=False).returncode == 0), "main")
         if dry:
             lifecycle._base(base)
+            lifecycle._validate_create_options(bool(req.get("prepare", False)),bool(req.get("verify", False)))
             branch, path = lifecycle._branch(req["work_id"]), lifecycle._path(req["work_id"])
             if path.exists() or lifecycle.git.run(("show-ref", "--verify", "--quiet", f"refs/heads/{branch}"), check=False).returncode == 0:
                 raise ManagerError("operation_failed", "Worktree branch or path already exists", 5)
@@ -95,10 +96,16 @@ def call(tool, request):
                 rel = path.relative_to(root).as_posix()
                 if lifecycle.git.run(("check-ignore", "-q", "--", rel), check=False).returncode:
                     raise ManagerError("invalid_configuration", "Worktree path is not ignored", 3)
-            data = {"planned": True, "work_id": req["work_id"], "base": base, "path": str(path), "branch": branch, "preflight": "passed", "mutations": [], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
+            data = {"planned": True, "work_id": req["work_id"], "base": base, "path": str(path), "branch": branch, "preflight": "passed", "mutations": [], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest,
+                    "init_submodules": "true" if req.get("init_submodules") else "false",
+                    "init_submodules_result": "planned" if req.get("init_submodules") else "not_requested",
+                    "prepare": "planned" if (req.get("prepare") or lifecycle.config.prepare_enabled) else "skipped",
+                    "verify": "planned" if (req.get("verify") or lifecycle.config.verify_enabled) else "skipped"}
         else:
-            data = lifecycle.create(req["work_id"], base)
-            data.update({"init_submodules":"false", "init_submodules_result":"not_requested", "prepare":"skipped", "verify":"skipped"})
+            data = lifecycle.create(req["work_id"], base,
+                                    init_submodules=bool(req.get("init_submodules", False)),
+                                    prepare=bool(req.get("prepare", False)),
+                                    verify=bool(req.get("verify", False)))
     elif tool == "worktree_complete":
         if dry:
             base=req.get("base", "main"); lifecycle._base(base)

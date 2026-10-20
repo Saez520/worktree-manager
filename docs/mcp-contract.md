@@ -14,6 +14,16 @@ working directory is never used as a repository default. Unknown arguments
 are rejected. Responses carry contract version 1, operation, repository,
 result, data, warnings, structured error and a nullable transaction ID.
 
+A rejected call publishes the same nine-key envelope as an accepted one, with
+`result` set to `failure` or `pending_intervention` and `error` carrying
+`code`, `message` and `exit_code`. The command line publishes that identical
+envelope for `--request-json`, so both transports can be read by one client.
+
+`worktree_create` accepts the optional booleans `init_submodules`, `prepare`
+and `verify`. They are off by default and report the observed state of each
+step; `prepare` and `verify` require the matching configured command and are
+rejected as `invalid_configuration` before any worktree or branch is created.
+
 Mutating dry runs do not invoke lifecycle operations. Complete, cleanup,
 recover and prune require per-call `authorization: "I_AUTHORIZE_THIS_CALL"`;
 cleanup with discard additionally requires the separate boolean

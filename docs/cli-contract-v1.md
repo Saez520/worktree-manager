@@ -6,6 +6,14 @@ The default presentation is human-readable. `--json` explicitly selects one JSON
 
 `--version` prints the tool version. The contract version describes the JSON schema and is independent from the tool version. Breaking schema changes require a new contract version. Legacy invocations do not opt into JSON implicitly; `list` retains Git porcelain output without `--json`. JSON changes presentation only and does not authorize, suppress, or alter lifecycle effects, locks, journals, backups, consent, or recovery.
 
+## Protocol requests
+
+`--request-json <file|->` reads one canonical request document and publishes the same nine-key envelope as the MCP transport, with or without `--json`: `contract_version`, `tool_version`, `operation`, `repository`, `result`, `data`, `warnings`, `error` and `transaction_id`. The request must not be combined with a subcommand or with any other flag; `--json` is accepted and does not change the published document. `operation` names the tool (`worktree_create`, `worktree_list`, …), `repository` is the absolute repository path, `error` carries `code`, `message` and `exit_code`, and `transaction_id` is `null` when no transaction exists. Accepted and rejected requests publish the same shape, so a client never has to parse two document formats.
+
+## Create options
+
+`create` accepts `--init-submodules`, `--prepare` and `--verify`; they are off by default, so a repository without that configuration behaves exactly as before. The reported states are the observed ones: `init_submodules_result` is `not_requested` or `initialized`, and `prepare` and `verify` are `skipped`, `passed` or `failed`. `--prepare` and `--verify` require `prepare_command` and `verify_command` in the configuration; without them the request is rejected as `invalid_configuration` before any worktree or branch exists. A failing step keeps the worktree and its branch for inspection instead of discarding them.
+
 ## Compatibility and recovery
 
 The standalone commands are `create`, `complete`, `cleanup`, `recover`, `list`, and `prune`; target-direct operations include `link-parent`, `abort`, `complete`, and `recover`. Existing legacy invocations remain human-readable and preserve their legacy exit codes and `list` porcelain format. A failed destination-state restoration is reported as `pending_intervention`; preserve-dirty backups and transaction evidence are retained for human intervention. Invalid descriptor/drift, lock contention, absent dependencies, and access failures are failures, not successful recovery. A recover request does not discard state.
