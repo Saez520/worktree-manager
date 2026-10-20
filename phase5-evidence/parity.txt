@@ -1,1 +1,0 @@
-Canonical Python CLI cwd-resolution parity passed.
