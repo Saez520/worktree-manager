@@ -29,5 +29,23 @@ git -C "$repo/.worktrees/smoke" commit -qm change
 "$ROOT/worktree.sh" --repo "$repo" complete smoke --base main >/dev/null
 test ! -e "$repo/.worktrees/smoke"
 git -C "$repo" show main:file | grep -q changed
-! grep -R -E 'refs/flowtask/backups|\.flowtask/backups|runner-constructor-target-direct|target-direct-transport' "$ROOT"/worktree.sh "$ROOT"/lib
+
+# The package worktree_manager is the only lifecycle. The retired shell engine
+# must be absent and must not be referenced by the active tree. The forbidden
+# names are written with a character-class break so that this test does not
+# reintroduce them into the tree it scans.
+engine_prefix='worktree-manager-'
+for retired in "${engine_prefix}core.sh" "${engine_prefix}target-direct.sh"; do
+  if [ -e "$ROOT/lib/$retired" ]; then
+    printf 'retired shell engine file is present: %s\n' "$ROOT/lib/$retired" >&2
+    exit 1
+  fi
+done
+forbidden_pattern="${engine_prefix}[a-z-]*[.]sh|worktree[_]manager[_]main[_]legacy|target[-]direct[-]transport|refs[/]flowtask[/]backups|[.]flowtask[/]backups|runner[-]constructor[-]target[-]direct"
+if grep -R -E -n "$forbidden_pattern" \
+    "$ROOT/worktree.sh" "$ROOT/worktree_manager" "$ROOT/tests" "$ROOT/docs" \
+    --exclude-dir=phase3-evidence --exclude-dir=phase5-evidence; then
+  printf '%s\n' 'the active tree references a forbidden identifier' >&2
+  exit 1
+fi
 echo 'standalone smoke tests passed'

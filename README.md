@@ -1,20 +1,34 @@
 # Gestor de worktrees
 
-Gestor Bash standalone para crear, completar, limpiar y recuperar worktrees de
-un repositorio Git. El proyecto no conoce FlowTask ni depende de sus rutas,
-refs heredadas o mecanismos de coordinación.
+Gestor standalone para crear, completar, limpiar y recuperar worktrees de un
+repositorio Git. El proyecto no conoce FlowTask ni depende de sus rutas, refs
+heredadas o mecanismos de coordinación.
 
 ## Arquitectura
 
-`worktree.sh` es el entrypoint y delega el lifecycle parent-only a
-`lib/worktree-manager-core.sh`; el core carga
-`lib/worktree-manager-target-direct.sh` para operar directamente sobre un
-submodule. La configuración se valida como datos `key=value`, nunca como
-código shell.
+`worktree.sh` es el entrypoint y delega el lifecycle en el paquete Python
+`worktree_manager`, que se ejecuta con `python3 -m worktree_manager`. El paquete
+es la única implementación del lifecycle: no existe un motor shell alternativo.
+
+El paquete se organiza en módulos con una responsabilidad cada uno:
+
+| Módulo | Responsabilidad |
+| --- | --- |
+| `worktree_manager.cli` | Interfaz de línea de comandos y contrato de salida. |
+| `worktree_manager.configuration` | Lectura y validación de la configuración `key=value`. |
+| `worktree_manager.worktree_lifecycle` | Operaciones `create`, `complete`, `cleanup` y `prune`. |
+| `worktree_manager.target_direct_adapter` | Operaciones `target-direct` sobre un submodule. |
+| `worktree_manager.recovery_manager` | Recuperación de transacciones pendientes. |
+| `worktree_manager.transaction_journal` | Journal durable de transacciones. |
+| `worktree_manager.backup_store` | Respaldos y refs de respaldo. |
+| `worktree_manager.lock_manager` | Exclusión mutua entre procesos. |
+| `worktree_manager.git_repository` | Acceso a Git desde un único punto. |
+| `worktree_manager.mcp_server` | Servicio MCP por stdio. |
+
+La configuración se valida como datos `key=value`, nunca como código shell.
 
 El instalador o consumidor que integre este repositorio debe materializarlo
-como una única fuente de implementación. No se deben mantener copias
-alternativas del core o del módulo target-direct.
+como una única fuente de implementación.
 
 ## Configuración y lifecycle
 

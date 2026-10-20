@@ -37,7 +37,7 @@ Run the real stdio client tests from the repository root:
 
 ```sh
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
-MCP_E2E_EVIDENCE_DIR=/private/tmp/worktree-mcp-evidence \
+MCP_E2E_EVIDENCE_DIR=<evidence-dir> \
   PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp_e2e.py' -v
 ```
 
