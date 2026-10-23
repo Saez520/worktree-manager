@@ -54,3 +54,12 @@ recovery, worktree/ref/index/status effects, plus MCP-vs-Python-CLI completion
 on independent equivalent repositories. When `MCP_E2E_EVIDENCE_DIR` is set,
 each test writes its request/response trace there as JSON. No evidence or Git
 fixture is written into the checked-out repository by default.
+
+## Mensaje de cierre
+
+`worktree_complete` acepta `commit_title` y `commit_body` (strings opcionales).
+Se validan como strings y se incluyen en el plan hash solo para esta operacion.
+El dry-run publica `commit_subject` y `commit_body` compuestos; execute los
+pasa al lifecycle. Si faltan, el gestor usa el fallback neutro
+`Complete <work_id> (generic closure)` / `No delivery description was available
+at closure time.`.

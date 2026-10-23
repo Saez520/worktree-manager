@@ -35,7 +35,7 @@ absoluta.
 
 ```text
 worktree.sh [--repo ABS] [--config ABS] [--json] create <id> [--base BRANCH] [--init-submodules] [--prepare] [--verify]
-worktree.sh [globales] complete <id> [--preserve-dirty]
+worktree.sh [globales] complete <id> [--preserve-dirty] [--title TEXTO] [--body TEXTO]
 worktree.sh [globales] cleanup <id> [--discard]
 worktree.sh [globales] recover [<transaction-id>]
 worktree.sh [globales] prune
@@ -106,6 +106,7 @@ El paquete se organiza en módulos con una responsabilidad cada uno:
 | `worktree_manager.output` | Publicación del resultado como texto legible o como JSON. |
 | `worktree_manager.git_repository` | Acceso compartido a Git para los módulos del lifecycle. |
 | `worktree_manager.worktree_lifecycle` | Operaciones `create`, `complete`, `cleanup` y `prune`. |
+| `worktree_manager.commit_message` | Composición determinista del mensaje de cierre y fallback neutro. |
 | `worktree_manager.target_direct_adapter` | Operaciones target-direct sobre un submódulo. |
 | `worktree_manager.recovery_manager` | Recuperación de transacciones pendientes. |
 | `worktree_manager.transaction_journal` | Journal durable de transacciones y enlaces. |

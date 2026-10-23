@@ -18,7 +18,7 @@ def _parser():
     for name in ('create','complete','cleanup'):
         p=sub.add_parser(name); p.add_argument('work_id'); p.add_argument('--base');
         if name=='cleanup': p.add_argument('--discard',action='store_true')
-        if name=='complete': p.add_argument('--preserve-dirty',action='store_true')
+        if name=='complete': p.add_argument('--preserve-dirty',action='store_true'); p.add_argument('--title'); p.add_argument('--body')
         if name=='create':
             p.add_argument('--init-submodules',action='store_true'); p.add_argument('--prepare',action='store_true'); p.add_argument('--verify',action='store_true')
     p=sub.add_parser('recover'); p.add_argument('transaction_id',nargs='?')
@@ -120,7 +120,7 @@ def main(argv=None)->int:
                 result=OperationResult(operation,data=data)
             elif operation=='cleanup': result=OperationResult(operation,data=lifecycle.cleanup(args.work_id,args.discard,args.base or 'main'))
             elif operation=='complete':
-                data=lifecycle.complete(args.work_id,args.base or 'main',args.preserve_dirty)
+                data=lifecycle.complete(args.work_id,args.base or 'main',args.preserve_dirty,commit_title=args.title,commit_body=args.body)
                 data['merge']='success'
                 result=OperationResult(operation,data=data)
         if operation=='list' and not args.json:

@@ -13,6 +13,7 @@ from .git_repository import GitRepository
 from .models import ManagerError
 from .lock_manager import LockManager
 from .transaction_journal import TransactionJournal
+from .commit_message import compose_commit_message
 
 _WORK_ID = re.compile(r'^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$')
 def validate_work_id(value: str) -> str:
@@ -131,13 +132,15 @@ class WorktreeLifecycle:
             self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
             self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
-    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None)->dict[str,str]:
+    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None,commit_title=None,commit_body=None)->dict[str,str]:
         """Squash a worktree branch and retire it only after verified success.
 
         Dirty-destination preservation is intentionally rejected until its capture
         and restoration protocol is available; it must never silently discard data.
         """
         branch=self._branch(work_id); base=self._base(base); path=self._path(work_id)
+        if commit_title is None and isinstance(request,dict): commit_title=request.get('commit_title')
+        if commit_body is None and isinstance(request,dict): commit_body=request.get('commit_body')
         registered={item['path'] for item in self.list()}
         if str(path) not in registered or not path.is_dir():
             raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
@@ -208,13 +211,19 @@ class WorktreeLifecycle:
                     for name in names if 'names' in locals() else []:
                         candidate=self.config.repo_root/name
                         if candidate.is_file() or candidate.is_symlink(): candidate.unlink()
+                subject,body=compose_commit_message(work_id,commit_title,commit_body)
+                meta['commit_subject']=subject
+                meta['commit_body']=body
                 save_meta('merge_started')
                 merged=self.git.run(('merge','--squash',branch),check=False)
                 if merged.returncode or self.git.run(('diff','--cached','--quiet'),check=False).returncode==0:
                     self.git.run(('reset','--merge'),check=False)
                     save_meta('pending_manual')
                     raise ManagerError('operation_failed','Squash merge failed or produced no changes; worktree and branch retained',5)
-                self.git.run(('commit','-m',f'squash merge {branch}'))
+                commit_args=['commit','-m',subject]
+                if body:
+                    commit_args += ['-m',body]
+                self.git.run(tuple(commit_args))
                 after=self.git.head()
                 if after==before or len(self.git.run(('rev-list','--parents','-n','1',after)).stdout.split())!=2:
                     save_meta('pending_manual'); raise ManagerError('operation_failed','Squash commit verification failed; resources retained',5)
@@ -230,7 +239,7 @@ class WorktreeLifecycle:
                     meta['squash']=after; save_meta('merged')
                     self._restore_saved(tx,meta)
                     save_meta('restored')
-                return {'completed':work_id,'branch':branch,'base_branch':base,'worktree':str(path),'squash_commit':after,'transaction_id':tx}
+                return {'completed':work_id,'branch':branch,'base_branch':base,'worktree':str(path),'squash_commit':after,'transaction_id':tx,'commit_subject':subject,'commit_body':body}
             finally: locks.release()
 
     def _restore_saved(self,tx,meta):

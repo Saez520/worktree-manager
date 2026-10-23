@@ -35,3 +35,15 @@ PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
 ```
 
 The usage suite parses each pre-dispatch usage failure, including the unknown option, the unknown or missing command, the missing global value and an invalid `--version` arity, checks the stable exit code `2`, and checks the help syntax of the target-direct `complete` and `recover` actions. The compatibility suite is independent of any orchestration worktree path. Every publication records the date, the commit and the output of these commands, and it does not cite a suite that no longer exists.
+
+## Mensaje de cierre
+
+`complete` acepta `--title TEXTO` y `--body TEXTO` opcionales. El gestor
+compone el asunto y el cuerpo de forma determinista: normaliza el titulo a una
+sola linea, normaliza CRLF a LF en el cuerpo y garantiza que el `work_id`
+aparezca en el asunto (lo agrega como ` [work_id]` si falta). Si no se pasa
+titulo, el asunto es `Complete <work_id> (generic closure)` y el cuerpo es
+`No delivery description was available at closure time.` El cuerpo solo se
+escribe si no esta vacio. Ambos valores quedan en `meta.json` como
+`commit_subject` y `commit_body`, y el dry-run los publica. Un cambio de
+titulo o cuerpo entre preflight y execute provoca `plan_mismatch`.
