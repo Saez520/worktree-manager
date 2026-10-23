@@ -102,3 +102,44 @@ class DurableBindingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompletePlanHashTests(unittest.TestCase):
+    def test_complete_plan_hash_includes_commit_fields(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, git = DurableBindingTests.repo(self, d)
+            created = call("worktree_create", {"repo": str(root), "work_id": "feature", "base": "main"})
+            wt = Path(created["data"]["path"])
+            subprocess.run(["git", "-C", str(wt), "config", "user.name", "Test"], check=True)
+            subprocess.run(["git", "-C", str(wt), "config", "user.email", "test@example.invalid"], check=True)
+            (wt / "change").write_text("change")
+            subprocess.run(["git", "-C", str(wt), "add", "change"], check=True)
+            subprocess.run(["git", "-C", str(wt), "commit", "-m", "feature"], check=True, stdout=subprocess.PIPE)
+            request = {"repo": str(root), "work_id": "feature", "base": "main", "dry_run": True,
+                       "authorization": "I_AUTHORIZE_THIS_CALL", "commit_title": "Titulo", "commit_body": "Cuerpo"}
+            plan = call("worktree_complete", request)["data"]
+            self.assertEqual(plan["commit_subject"], "Titulo [feature]")
+            self.assertEqual(plan["commit_body"], "Cuerpo")
+            execute = dict(request, dry_run=False, transaction_id=plan["transaction_id"], plan_hash=plan["plan_hash"])
+            result = call("worktree_complete", execute)
+            self.assertEqual(result["result"], "success")
+            self.assertEqual(result["data"]["commit_subject"], "Titulo [feature]")
+            self.assertEqual(result["data"]["commit_body"], "Cuerpo")
+
+    def test_complete_plan_mismatch_on_title_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, git = DurableBindingTests.repo(self, d)
+            created = call("worktree_create", {"repo": str(root), "work_id": "feature", "base": "main"})
+            wt = Path(created["data"]["path"])
+            subprocess.run(["git", "-C", str(wt), "config", "user.name", "Test"], check=True)
+            subprocess.run(["git", "-C", str(wt), "config", "user.email", "test@example.invalid"], check=True)
+            (wt / "change").write_text("change")
+            subprocess.run(["git", "-C", str(wt), "add", "change"], check=True)
+            subprocess.run(["git", "-C", str(wt), "commit", "-m", "feature"], check=True, stdout=subprocess.PIPE)
+            request = {"repo": str(root), "work_id": "feature", "base": "main", "dry_run": True,
+                       "authorization": "I_AUTHORIZE_THIS_CALL", "commit_title": "A"}
+            plan = call("worktree_complete", request)["data"]
+            execute = dict(request, dry_run=False, commit_title="B", transaction_id=plan["transaction_id"], plan_hash=plan["plan_hash"])
+            with self.assertRaises(ManagerError) as caught:
+                call("worktree_complete", execute)
+            self.assertEqual(caught.exception.code, "plan_mismatch")
