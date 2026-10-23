@@ -134,6 +134,22 @@ class McpE2ETests(unittest.TestCase):
         self.assertFalse((mcp_repo / ".worktrees/feature").exists())
         self.assertFalse((cli_repo / ".worktrees/feature").exists())
 
+    def test_complete_commit_title_and_body_through_mcp(self):
+        self.call("worktree_create", work_id="feature", base="main")
+        wt = self.repo / ".worktrees/feature"
+        (wt / "feature.txt").write_text("feature\n")
+        git(wt, "add", "feature.txt")
+        git(wt, "commit", "-qm", "feature")
+        result, error = self.call("worktree_complete", work_id="feature", base="main",
+                                  authorization="I_AUTHORIZE_THIS_CALL",
+                                  commit_title="Cierre de prueba", commit_body="Entrega: prueba. Motivo: verificacion.")
+        self.assertFalse(error, result)
+        self.assertEqual(result["result"], "success")
+        log = git(self.repo, "log", "-1", "--format=%s%n%b")
+        self.assertIn("Cierre de prueba [feature]", log)
+        self.assertIn("Entrega: prueba. Motivo: verificacion.", log)
+        self.assertFalse((self.repo / ".worktrees/feature").exists())
+
     def test_prune_dry_run_reports_no_work_without_mutation(self):
         before = state(self.repo)
         result, error = self.call("worktree_prune", dry_run=True)

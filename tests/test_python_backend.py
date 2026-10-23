@@ -117,6 +117,26 @@ class BackendTests(unittest.TestCase):
             self.assertIn('M ',git('status','--porcelain'))
             self.assertEqual(lifecycle.journal.read_phase(result['transaction_id']),'restored')
 
+    def test_complete_commit_title_and_body_appear_in_git_log(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)/'repo'; root.mkdir()
+            def git(*args): return subprocess.run(['git','-C',str(root),*args],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True).stdout.strip()
+            git('init','-b','main'); git('config','user.name','Test'); git('config','user.email','test@example.invalid')
+            (root/'base').write_text('base'); git('add','base'); git('commit','-m','base')
+            cfg=Configuration(repo_root=root,worktrees_dir=str(Path(d)/'trees'),branch_prefix='worktree/',state_dir='state')
+            lifecycle=WorktreeLifecycle(cfg); created=lifecycle.create('feature','main')
+            subprocess.run(['git','-C',created['path'],'config','user.name','Test'],check=True)
+            subprocess.run(['git','-C',created['path'],'config','user.email','test@example.invalid'],check=True)
+            (Path(created['path'])/'feature').write_text('change')
+            subprocess.run(['git','-C',created['path'],'add','feature'],check=True)
+            subprocess.run(['git','-C',created['path'],'commit','-m','feature'],check=True,stdout=subprocess.PIPE)
+            result=lifecycle.complete('feature','main',commit_title='Cierre de prueba',commit_body='Entrega: prueba. Motivo: verificacion.')
+            self.assertEqual(result['commit_subject'],'Cierre de prueba [feature]')
+            self.assertEqual(result['commit_body'],'Entrega: prueba. Motivo: verificacion.')
+            log=subprocess.run(['git','-C',str(root),'log','-1','--format=%s%n%b'],check=True,stdout=subprocess.PIPE,text=True).stdout
+            self.assertEqual(log.strip(),'Cierre de prueba [feature]\nEntrega: prueba. Motivo: verificacion.')
+            self.assertEqual(lifecycle.journal.read_phase(result['transaction_id']),'closed')
+
     def test_recover_merge_started_after_durable_squash_is_noop_and_repeat(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)/'repo'; root.mkdir()

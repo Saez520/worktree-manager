@@ -86,6 +86,18 @@ tenga cambios sin commitear y que el destino tampoco los tenga, salvo que se
 use `--preserve-dirty`. Al terminar, el cambio queda integrado como un commit
 de squash en `main`, y el worktree y su rama se retiran.
 
+Para dejar un commit de cierre diciente, pasa `--title` y, opcionalmente,
+`--body`:
+
+```sh
+"$HOME/worktree-manager/worktree.sh" --repo "$HOME/demo" complete demo --base main \
+  --title "Cierre de demo" --body "Entrega: cambio integrado. Motivo: verificacion."
+```
+
+Si no se pasa `--title`, el gestor usa el fallback generico:
+`Complete <work_id> (generic closure)` con el cuerpo
+`No delivery description was available at closure time.`.
+
 ## 4. Configuración
 
 La configuración es un archivo de `clave=valor`. El gestor lo toma de

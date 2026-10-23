@@ -44,4 +44,18 @@ assert recover["operation"] == "recover" and recover["result"] == "no_pending_wo
 assert prune["operation"] == "prune" and prune["result"] == "no_pending_work"
 assert isinstance(prune["data"]["pruned"], int)
 PY2
+"$ROOT/worktree.sh" --repo "$repo" create feature >/dev/null
+wt="$repo/.worktrees/feature"
+printf changed > "$wt/feature.txt"
+git -C "$wt" add feature.txt
+git -C "$wt" commit -qm feature
+"$ROOT/worktree.sh" --json --repo "$repo" complete feature --base main --title "Cierre de prueba" --body "Entrega: prueba. Motivo: verificacion." > "$tmp/complete.json"
+python3 - "$tmp/complete.json" <<'PY3'
+import json, sys
+result = json.load(open(sys.argv[1], encoding="utf-8"))
+assert result["operation"] == "complete"
+assert result["result"] == "success"
+assert result["data"]["commit_subject"] == "Cierre de prueba [feature]"
+assert result["data"]["commit_body"] == "Entrega: prueba. Motivo: verificacion."
+PY3
 echo 'CLI JSON tests passed'
