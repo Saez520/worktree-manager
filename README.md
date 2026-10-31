@@ -7,26 +7,34 @@ heredadas o mecanismos de coordinación.
 ## Requisitos
 
 - **Python 3.9 o posterior.** El entrypoint sólo comprueba que `python3` esté
-  disponible en el `PATH`; no verifica la versión. El piso de 3.9 es el que
-  valida el instalador del consumidor. El paquete usa sólo la biblioteca
-  estándar.
+  disponible en el `PATH`; el piso de 3.9 lo valida el postinstall del paquete
+  y `node <paquete>/setup.mjs`. El paquete usa sólo la biblioteca estándar.
 - **Git 2.17.0 o posterior**, por `git worktree remove`, que es el comando más
   reciente que usa el gestor. La línea base de las pruebas es Git 2.54.0. El
   gestor no comprueba la versión de Git en tiempo de ejecución.
+- **Node 18 o posterior** para los lanzadores `mcp-server.mjs`, `worktree.mjs`
+  y `setup.mjs`.
 - **`bash`** para ejecutar las suites de pruebas.
 
 ## Instalación
 
-El gestor se instala clonando el repositorio. No hay paquete que instalar ni
-dependencias que resolver.
+El gestor se distribuye como paquete npm `worktree-for-agents`, versión
+`1.0.0`, sin bin ni `npx`:
 
 ```sh
-git clone git@github.com:Saez520/worktree-manager.git worktree-manager
-cd worktree-manager
-./worktree.sh --version
+npm install -g worktree-for-agents@latest
+pnpm add -g worktree-for-agents@latest
 ```
 
-La última orden imprime `1.0.0`.
+Comprueba el diagnóstico de la instalación:
+
+```sh
+node <paquete>/setup.mjs
+```
+
+El clon del repositorio queda solo para desarrollo. No hay `pip install` ni
+dependencias que resolver: el gestor usa sólo la biblioteca estándar de
+Python. Una vez instalado, el gestor funciona sin red.
 
 ## Uso rápido
 
@@ -58,7 +66,26 @@ el mismo sobre de nueve claves que usa el transporte MCP, y acepta `--json` de
 forma opcional. Un dry run de `create` publica `planned: true` y no crea
 worktree ni rama.
 
-El servicio MCP se publica por stdio:
+El servicio MCP se publica por stdio. Desde el paquete instalado se lanza sin
+bin:
+
+```sh
+node <paquete>/mcp-server.mjs
+```
+
+La CLI se usa del mismo modo:
+
+```sh
+node <paquete>/worktree.mjs --version
+```
+
+El `initialize` del MCP publica la guía en `instructions`:
+
+```text
+Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+```
+
+Para desarrollo, el transporte también arranca desde el checkout:
 
 ```sh
 PYTHONPATH=. python3 -m worktree_manager.mcp_transport

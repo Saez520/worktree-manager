@@ -4,7 +4,7 @@ from __future__ import annotations
 import pathlib
 
 CONTRACT_VERSION = 1
-TOOL_VERSION = "1.0.0"
+from . import __version__ as TOOL_VERSION
 TOOL_NAMES = (
     "worktree_create", "worktree_complete", "worktree_cleanup",
     "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",

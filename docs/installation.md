@@ -1,11 +1,11 @@
 # Instalación y uso del gestor de worktrees
 
-Esta guía explica cómo instalar el gestor desde un clon aislado y cómo usarlo
-sobre un repositorio de prueba. No cubre la integración con ningún consumidor:
-esa parte se documenta en el repositorio que integra el gestor.
+Esta guía explica cómo instalar el gestor como paquete npm y cómo usarlo
+sobre un repositorio de prueba. La integración con un consumidor concreto
+se documenta en el repositorio que integra el gestor.
 
-Los ejemplos usan `$HOME` porque `--repo` exige una ruta absoluta. Sustitúyelo
-por la ruta real donde clones el gestor.
+Los ejemplos usan `$HOME` porque `--repo` exige una ruta absoluta. `<paquete>`
+es la ruta del paquete instalado.
 
 ## 1. Requisitos
 
@@ -14,26 +14,37 @@ Comprueba las versiones disponibles:
 ```sh
 python3 --version
 git --version
+node --version
 ```
 
-- **Python 3.9 o posterior.** El entrypoint `worktree.sh` sólo comprueba que
-  `python3` esté en el `PATH`; no verifica la versión. El piso de 3.9 lo
-  valida el instalador del consumidor, no este repositorio.
+- **Python 3.9 o posterior.** El postinstall del paquete verifica el piso de
+  3.9 y falla de forma visible si falta o es anterior. `node
+  <paquete>/setup.mjs` informa el intérprete detectado.
 - **Git 2.17.0 o posterior**, por `git worktree remove`. La línea base de las
   pruebas es Git 2.54.0. El gestor no comprueba la versión de Git en tiempo de
   ejecución.
+- **Node 18 o posterior** para los lanzadores `mcp-server.mjs`, `worktree.mjs`
+  y `setup.mjs`.
 - **`bash`** para ejecutar las suites de pruebas.
 
-## 2. Clonar e instalar
+## 2. Instalar el paquete
 
 ```sh
-git clone git@github.com:Saez520/worktree-manager.git "$HOME/worktree-manager"
-cd "$HOME/worktree-manager"
-./worktree.sh --version
+npm install -g worktree-for-agents@latest
+pnpm add -g worktree-for-agents@latest
 ```
 
-La salida es `1.0.0`. No hay `pip install`, ni paquete que instalar, ni
-dependencias que resolver: el gestor usa sólo la biblioteca estándar de Python.
+Comprueba el diagnóstico:
+
+```sh
+node <paquete>/setup.mjs
+```
+
+El paquete no expone bin ni `npx`: el MCP se lanza con `node
+<paquete>/mcp-server.mjs` y la CLI con `node <paquete>/worktree.mjs`. El clon
+del repositorio queda solo para desarrollo. No hay `pip install` ni
+dependencias que resolver: el gestor usa sólo la biblioteca estándar de
+Python. Una vez instalado, el gestor funciona sin red.
 
 ## 3. Un repositorio de prueba
 
@@ -126,7 +137,20 @@ Cada clave puede aparecer una sola vez. Una clave desconocida, una línea sin
 - Un dry run de `create` publica `planned: true` y no crea worktree ni rama.
   `init_submodules_result` es `planned` o `not_requested`, y `prepare` y
   `verify` son `planned` o `skipped`.
-- El servicio MCP se publica por stdio y expone siete herramientas:
+- El servicio MCP se publica por stdio y expone siete herramientas. Desde el
+  paquete instalado se lanza sin bin:
+
+```sh
+node <paquete>/mcp-server.mjs
+```
+
+  El `initialize` publica la guía en `instructions`:
+
+```text
+Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+```
+
+  Para desarrollo, el transporte también arranca desde el checkout:
 
 ```sh
 PYTHONPATH=. python3 -m worktree_manager.mcp_transport
@@ -144,12 +168,17 @@ PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
 ```
 
-## 7. Consumo como submódulo
+## 7. Consumo como submódulo y coexistencia
 
 Un repositorio consumidor puede materializar el gestor como submódulo. La
 regla es única: el checkout materializado y el gitlink registrado deben ser el
-mismo commit. El gestor no se empaqueta ni se copia a un target instalado, y no
-se promete una distribución portable.
+mismo commit.
+
+El paquete npm `worktree-for-agents` es independiente del submódulo: embarca
+el runtime Python y funciona sin red una vez instalado. `node
+<paquete>/setup.mjs` diagnostica qué instalación está activa cuando coexisten
+el paquete npm, la copia global de FlowTask y el submódulo local. El clon del
+repositorio queda solo para desarrollo y no se promete otra distribución.
 
 ## 8. Solución de problemas
 

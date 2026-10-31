@@ -1,9 +1,12 @@
 """Minimal stdio JSON-RPC server exposing the worktree management tools."""
 import json
 import sys
+from . import __version__
 from .mcp_contract import TOOL_NAMES, absolute_repository, error_envelope
 from .mcp_operations import call
 from .models import ManagerError
+
+MCP_INSTRUCTIONS = "Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?"
 
 def schemas():
     from .mcp_contract import FIELDS, REQUIRED, output_schema
@@ -24,7 +27,7 @@ def dispatch(message):
     method = message.get("method")
     params = message.get("params") or {}
     if method == "initialize":
-        return {"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "worktree-manager", "version": "1.0.0"}}
+        return {"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "worktree-for-agents", "version": __version__}, "instructions": MCP_INSTRUCTIONS}
     if method == "notifications/initialized": return None
     if method == "ping": return {}
     if method == "tools/list": return {"tools": schemas()}

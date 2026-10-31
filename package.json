@@ -1,0 +1,39 @@
+{
+  "name": "worktree-for-agents",
+  "version": "1.0.0",
+  "description": "Standalone Git worktree manager with a stdio MCP service usable by any coding agent",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "worktree.sh",
+    "worktree_manager/**/*.py",
+    "mcp-server.mjs",
+    "worktree.mjs",
+    "setup.mjs",
+    "GUIDE.md",
+    "README.md",
+    "docs/installation.md",
+    "docs/mcp-contract.md",
+    "scripts/python.mjs",
+    "scripts/postinstall.mjs"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "prepublishOnly": "node scripts/verify-package.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Saez520/worktree-manager.git"
+  },
+  "keywords": [
+    "git",
+    "worktree",
+    "mcp",
+    "coding-agent"
+  ]
+}

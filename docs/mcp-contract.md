@@ -14,6 +14,19 @@ working directory is never used as a repository default. Unknown arguments
 are rejected. Responses carry contract version 1, operation, repository,
 result, data, warnings, structured error and a nullable transaction ID.
 
+The `initialize` result carries `serverInfo.name "worktree-for-agents"` and
+an `instructions` field with the literal guide text:
+
+```text
+Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+```
+
+When installed from npm, the service is launched without a bin entry via:
+
+```sh
+node <package>/mcp-server.mjs
+```
+
 A rejected call publishes the same nine-key envelope as an accepted one, with
 `result` set to `failure` or `pending_intervention` and `error` carrying
 `code`, `message` and `exit_code`. The command line publishes that identical

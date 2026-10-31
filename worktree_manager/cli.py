@@ -9,7 +9,7 @@ from .output import emit
 from .worktree_lifecycle import WorktreeLifecycle
 from .recovery_manager import RecoveryManager
 from .target_direct_adapter import TargetDirectAdapter
-VERSION='1.0.0'
+from . import __version__ as VERSION
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
         raise ManagerError('usage_error',message,2)
