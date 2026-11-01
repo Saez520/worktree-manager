@@ -71,6 +71,25 @@ class PythonCliTests(unittest.TestCase):
             self.assertEqual(set(success),set(failure))
             self.assertEqual(set(success),set(output_schema()['required']))
             self.assertEqual(success['error'],None); self.assertIsNotNone(failure['error'])
+    def test_complete_title_and_body_cli(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo=self.repository(Path(d)/'repo')
+            created=subprocess.run([sys.executable,'-m','worktree_manager','--repo',str(repo),'create','feature','--base','main'],check=True,capture_output=True,text=True)
+            wt=repo/'.worktrees'/'feature'
+            (wt/'feature.txt').write_text('feature\n')
+            subprocess.run(['git','-C',str(wt),'add','feature.txt'],check=True)
+            subprocess.run(['git','-C',str(wt),'config','user.name','test'],check=True)
+            subprocess.run(['git','-C',str(wt),'config','user.email','test@example.invalid'],check=True)
+            subprocess.run(['git','-C',str(wt),'commit','-qm','feature'],check=True)
+            result=subprocess.run([sys.executable,'-m','worktree_manager','--repo',str(repo),'--json','complete','feature','--base','main','--title','Cierre de prueba','--body','Entrega: prueba. Motivo: verificacion.'],check=True,capture_output=True,text=True)
+            doc=json.loads(result.stdout)
+            self.assertEqual(doc['result'],'success')
+            self.assertEqual(doc['data']['commit_subject'],'Cierre de prueba [feature]')
+            self.assertEqual(doc['data']['commit_body'],'Entrega: prueba. Motivo: verificacion.')
+            log=subprocess.run(['git','-C',str(repo),'log','-1','--format=%s%n%b'],check=True,capture_output=True,text=True).stdout
+            self.assertIn('Cierre de prueba [feature]',log)
+            self.assertIn('Entrega: prueba. Motivo: verificacion.',log)
+
     def test_request_json_usage_failure_publishes_the_contract_envelope(self):
         rejected=self.run_cli('--request-json','-','--json','unexpected-argument')
         self.assertEqual(rejected.returncode,2,rejected.stderr)
