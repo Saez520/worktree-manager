@@ -1,154 +1,153 @@
-# Gestor de worktrees
+# Worktree manager
 
-Gestor standalone para crear, completar, limpiar y recuperar worktrees de un
-repositorio Git. El proyecto no conoce FlowTask ni depende de sus rutas, refs
-heredadas o mecanismos de coordinación.
+Standalone manager to create, complete, clean up, and recover worktrees of a
+Git repository. The project does not know FlowTask and does not depend on its paths, legacy
+refs, or coordination mechanisms.
 
-## Requisitos
+## Requirements
 
-- **Python 3.9 o posterior.** El entrypoint sólo comprueba que `python3` esté
-  disponible en el `PATH`; el piso de 3.9 lo valida el postinstall del paquete
-  y `node <paquete>/setup.mjs`. El paquete usa sólo la biblioteca estándar.
-- **Git 2.17.0 o posterior**, por `git worktree remove`, que es el comando más
-  reciente que usa el gestor. La línea base de las pruebas es Git 2.54.0. El
-  gestor no comprueba la versión de Git en tiempo de ejecución.
-- **Node 18 o posterior** para los lanzadores `mcp-server.mjs`, `worktree.mjs`
-  y `setup.mjs`.
-- **`bash`** para ejecutar las suites de pruebas.
+- **Python 3.9 or later.** The entrypoint only checks that `python3` is
+  available on the `PATH`; the 3.9 floor is validated by the package postinstall
+  and `node <package>/setup.mjs`. The package uses only the standard library.
+- **Git 2.17.0 or later**, for `git worktree remove`, which is the most
+  recent command used by the manager. The test baseline is Git 2.54.0. The
+  manager does not check the Git version at runtime.
+- **Node 18 or later** for the `mcp-server.mjs`, `worktree.mjs`
+  and `setup.mjs` launchers.
+- **`bash`** to run the test suites.
 
-## Instalación
+## Installation
 
-El gestor se distribuye como paquete npm `worktree-for-agents`, versión
-`1.0.0`, sin bin ni `npx`:
+The manager is distributed as the npm package `worktree-for-agents`, version
+`1.0.0`, with no bin or `npx`:
 
 ```sh
 npm install -g worktree-for-agents@latest
 pnpm add -g worktree-for-agents@latest
 ```
 
-Comprueba el diagnóstico de la instalación:
+Check the installation diagnostics:
 
 ```sh
-node <paquete>/setup.mjs
+node <package>/setup.mjs
 ```
 
-El clon del repositorio queda solo para desarrollo. No hay `pip install` ni
-dependencias que resolver: el gestor usa sólo la biblioteca estándar de
-Python. Una vez instalado, el gestor funciona sin red.
+The repository clone is for development only. There is no `pip install` and no
+dependencies to resolve: the manager uses only the Python standard
+library. Once installed, the manager works without a network.
 
-## Uso rápido
+## Quick start
 
-Las opciones globales van antes del subcomando y `--repo` exige una ruta
-absoluta.
+Global options go before the subcommand and `--repo` requires an absolute
+path.
 
 ```text
 worktree.sh [--repo ABS] [--config ABS] [--json] create <id> [--base BRANCH] [--init-submodules] [--prepare] [--verify]
-worktree.sh [globales] complete <id> [--preserve-dirty] [--title TEXTO] [--body TEXTO]
-worktree.sh [globales] cleanup <id> [--discard]
-worktree.sh [globales] recover [<transaction-id>]
-worktree.sh [globales] prune
-worktree.sh [globales] list
+worktree.sh [globals] complete <id> [--preserve-dirty] [--title TEXT] [--body TEXT]
+worktree.sh [globals] cleanup <id> [--discard]
+worktree.sh [globals] recover [<transaction-id>]
+worktree.sh [globals] prune
+worktree.sh [globals] list
 ```
 
-Target-direct opera sobre el repositorio indicado en `--repo` y no crea un
-worktree del parent ni modifica su `HEAD`. Su sintaxis coloca `--parent-repo`
-después de la acción y exige `--submodule-path` en `create`:
+Target-direct operates on the repository given in `--repo` and does not create a
+parent worktree nor modify its `HEAD`. Its syntax places `--parent-repo`
+after the action and requires `--submodule-path` in `create`:
 
 ```text
-worktree.sh [--repo ABS] target-direct <acción> <id> --parent-repo <parent> [--target submodule] [--submodule-path <REL>] [--base BRANCH] [--link-parent staged-only] [--descriptor PATH]
+worktree.sh [--repo ABS] target-direct <action> <id> --parent-repo <parent> [--target submodule] [--submodule-path <REL>] [--base BRANCH] [--link-parent staged-only] [--descriptor PATH]
 ```
 
-Las acciones son `create`, `link-parent`, `abort`, `complete` y `recover`, y el
-único modo de enlace admitido es `--link-parent staged-only`.
+The actions are `create`, `link-parent`, `abort`, `complete` and `recover`, and the
+only supported link mode is `--link-parent staged-only`.
 
-`--json` publica un único documento JSON. `--request-json <archivo|->` publica
-el mismo sobre de nueve claves que usa el transporte MCP, y acepta `--json` de
-forma opcional. Un dry run de `create` publica `planned: true` y no crea
-worktree ni rama.
+`--json` publishes a single JSON document. `--request-json <file|->` publishes
+the same nine-key envelope used by the MCP transport, and optionally accepts `--json`.
+A dry run of `create` publishes `planned: true` and creates no
+worktree or branch.
 
-El servicio MCP se publica por stdio. Desde el paquete instalado se lanza sin
+The MCP service is published over stdio. From the installed package it is launched without
 bin:
 
 ```sh
-node <paquete>/mcp-server.mjs
+node <package>/mcp-server.mjs
 ```
 
-La CLI se usa del mismo modo:
+The CLI is used the same way:
 
 ```sh
-node <paquete>/worktree.mjs --version
+node <package>/worktree.mjs --version
 ```
 
-El `initialize` del MCP publica la guía en `instructions`:
+The MCP `initialize` publishes the guide in `instructions`:
 
 ```text
-Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
 ```
 
-Para desarrollo, el transporte también arranca desde el checkout:
+For development, the transport also starts from the checkout:
 
 ```sh
 PYTHONPATH=. python3 -m worktree_manager.mcp_transport
 ```
 
-## Configuración
+## Configuration
 
-La configuración es un archivo opcional de `clave=valor`, seleccionado con
-`--config` o tomado de `.worktree-manager.conf` en la raíz del repositorio.
-Las once claves y sus valores por defecto son:
+The configuration is an optional `key=value` file, selected with
+`--config` or taken from `.worktree-manager.conf` at the repository root.
+The eleven keys and their default values are:
 
-| Clave | Por defecto | Restricción |
+| Key | Default | Restriction |
 |---|---|---|
-| `worktrees_dir` | `.worktrees` | No puede empezar por `-` |
+| `worktrees_dir` | `.worktrees` | Must not start with `-` |
 | `branch_prefix` | `worktree/` | — |
-| `state_dir` | `worktree-manager` | Ruta relativa segura |
-| `backup_dir` | `backups` | No es una ruta absoluta y no contiene `..` |
-| `backup_ref_prefix` | `worktree-manager/backups` | Sin `..` |
-| `lock_dir` | `locks` | Ruta relativa segura |
-| `prepare_command` | `''` (vacío) | Requerida cuando `prepare_enabled=true` |
-| `verify_command` | `''` (vacío) | Requerida cuando `verify_enabled=true` |
-| `prepare_enabled` | `false` | `true` o `false` |
-| `verify_enabled` | `false` | `true` o `false` |
-| `preserve_dirty` | `false` | `true` o `false` |
+| `state_dir` | `worktree-manager` | Safe relative path |
+| `backup_dir` | `backups` | Not an absolute path and contains no `..` |
+| `backup_ref_prefix` | `worktree-manager/backups` | No `..` |
+| `lock_dir` | `locks` | Safe relative path |
+| `prepare_command` | `''` (empty) | Required when `prepare_enabled=true` |
+| `verify_command` | `''` (empty) | Required when `verify_enabled=true` |
+| `prepare_enabled` | `false` | `true` or `false` |
+| `verify_enabled` | `false` | `true` or `false` |
+| `preserve_dirty` | `false` | `true` or `false` |
 
-Cada clave puede aparecer una sola vez. Las claves desconocidas, las líneas mal
-formadas, los booleanos inválidos y las rutas inseguras se rechazan como
-`invalid_configuration` con código de salida `3`. La variable de entorno
-`WORKTREE_MANAGER_<CLAVE>`, con la clave en mayúsculas, reemplaza el valor
-leído del archivo.
+Each key may appear only once. Unknown keys, malformed lines, invalid booleans, and unsafe paths are rejected as
+`invalid_configuration` with exit code `3`. The environment variable
+`WORKTREE_MANAGER_<KEY>`, with the key in uppercase, overrides the value
+read from the file.
 
-## Arquitectura
+## Architecture
 
-`worktree.sh` es el entrypoint y delega el lifecycle en el paquete Python
-`worktree_manager`, que se ejecuta con `python3 -m worktree_manager`. El paquete
-es la única implementación del lifecycle: no existe un motor shell alternativo.
+`worktree.sh` is the entrypoint and delegates the lifecycle to the Python
+package `worktree_manager`, which runs with `python3 -m worktree_manager`. The package
+is the only lifecycle implementation: there is no alternative shell engine.
 
-El paquete se organiza en módulos con una responsabilidad cada uno:
+The package is organized in modules with one responsibility each:
 
-| Módulo | Responsabilidad |
+| Module | Responsibility |
 | --- | --- |
-| `worktree_manager.cli` | Despachador de comandos, despacho target-direct y contrato de salida. |
-| `worktree_manager.configuration` | Lectura y validación de la configuración `clave=valor`. |
-| `worktree_manager.models` | Valores de dominio compartidos: resultados, errores e identidades. |
-| `worktree_manager.output` | Publicación del resultado como texto legible o como JSON. |
-| `worktree_manager.git_repository` | Acceso compartido a Git para los módulos del lifecycle. |
-| `worktree_manager.worktree_lifecycle` | Operaciones `create`, `complete`, `cleanup` y `prune`. |
-| `worktree_manager.commit_message` | Composición determinista del mensaje de cierre y fallback neutro. |
-| `worktree_manager.target_direct_adapter` | Operaciones target-direct sobre un submódulo. |
-| `worktree_manager.recovery_manager` | Recuperación de transacciones pendientes. |
-| `worktree_manager.transaction_journal` | Journal durable de transacciones y enlaces. |
-| `worktree_manager.backup_store` | Referencias de respaldo retenidas. |
-| `worktree_manager.lock_manager` | Exclusión mutua entre procesos. |
-| `worktree_manager.state_digest` | Digest canónico del estado del repositorio y de un plan. |
-| `worktree_manager.mcp_server` | Servicio MCP publicado por stdio. |
-| `worktree_manager.mcp_contract` | Contratos estrictos y versionados de petición y de sobre. |
-| `worktree_manager.mcp_operations` | Fachada sobre los servicios de lifecycle y de recuperación. |
-| `worktree_manager.mcp_transport` | Punto de entrada del transporte por stdio. |
+| `worktree_manager.cli` | Command dispatcher, target-direct dispatch, and output contract. |
+| `worktree_manager.configuration` | Reading and validating the `key=value` configuration. |
+| `worktree_manager.models` | Shared domain values: results, errors, and identities. |
+| `worktree_manager.output` | Publishing the result as readable text or as JSON. |
+| `worktree_manager.git_repository` | Shared Git access for the lifecycle modules. |
+| `worktree_manager.worktree_lifecycle` | `create`, `complete`, `cleanup`, and `prune` operations. |
+| `worktree_manager.commit_message` | Deterministic closing message composition and neutral fallback. |
+| `worktree_manager.target_direct_adapter` | Target-direct operations on a submodule. |
+| `worktree_manager.recovery_manager` | Recovery of pending transactions. |
+| `worktree_manager.transaction_journal` | Durable transaction and link journal. |
+| `worktree_manager.backup_store` | Retained backup references. |
+| `worktree_manager.lock_manager` | Mutual exclusion between processes. |
+| `worktree_manager.state_digest` | Canonical digest of the repository state and of a plan. |
+| `worktree_manager.mcp_server` | MCP service published over stdio. |
+| `worktree_manager.mcp_contract` | Strict versioned request and envelope contracts. |
+| `worktree_manager.mcp_operations` | Facade over the lifecycle and recovery services. |
+| `worktree_manager.mcp_transport` | Stdio transport entrypoint. |
 
-El paquete contiene además el marcador de paquete `__init__.py` y el punto de
-entrada `__main__.py`, que es lo que ejecuta `python3 -m worktree_manager`.
+The package also contains the package marker `__init__.py` and the
+entrypoint `__main__.py`, which is what `python3 -m worktree_manager` runs.
 
-## Pruebas
+## Tests
 
 ```sh
 bash tests/cli-usage.sh
@@ -160,22 +159,22 @@ PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
 ```
 
-## Documentación
+## Documentation
 
-- [Contrato de salida de la CLI](docs/cli-contract-v1.md) — contrato.
-- [Contrato del servicio MCP](docs/mcp-contract.md) — contrato.
-- [Guía de instalación y uso](docs/installation.md) — guía.
-- [Histórico bash → Python](docs/history-bash-to-python.md) — memoria, no contrato.
+- [CLI output contract](docs/cli-contract-v1.md) — contract.
+- [MCP service contract](docs/mcp-contract.md) — contract.
+- [Installation and usage guide](docs/installation.md) — guide.
+- [History bash → Python](docs/history-bash-to-python.md) — notes, not a contract.
 
-Los contratos fijan el comportamiento verificable. La guía explica cómo usarlo.
-El histórico registra la transición y no sustituye a los contratos.
+Contracts pin the verifiable behavior. The guide explains how to use it.
+The history records the transition and does not replace the contracts.
 
-## Fuente y distribución
+## Source and distribution
 
-Este repositorio es la fuente de verdad de la implementación, de los contratos,
-de la instalación y del histórico del gestor.
+This repository is the source of truth for the implementation, the contracts,
+the installation, and the manager history.
 
-El consumidor que integra este repositorio documenta el adaptador, el bridge y
-la frontera del submódulo: **la documentación de esa integración vive en el
-repositorio consumidor**. El gestor no mantiene una copia vendorizada de sí
-mismo y no conoce al consumidor.
+The consumer that integrates this repository documents the adapter, the bridge, and
+the submodule boundary: **that integration documentation lives in the
+consumer repository**. The manager does not keep a vendored copy of itself
+and does not know the consumer.

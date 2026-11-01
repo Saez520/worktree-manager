@@ -18,7 +18,7 @@ The `initialize` result carries `serverInfo.name "worktree-for-agents"` and
 an `instructions` field with the literal guide text:
 
 ```text
-Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
 ```
 
 When installed from npm, the service is launched without a bin entry via:
@@ -68,11 +68,11 @@ on independent equivalent repositories. When `MCP_E2E_EVIDENCE_DIR` is set,
 each test writes its request/response trace there as JSON. No evidence or Git
 fixture is written into the checked-out repository by default.
 
-## Mensaje de cierre
+## Closing message
 
-`worktree_complete` acepta `commit_title` y `commit_body` (strings opcionales).
-Se validan como strings y se incluyen en el plan hash solo para esta operacion.
-El dry-run publica `commit_subject` y `commit_body` compuestos; execute los
-pasa al lifecycle. Si faltan, el gestor usa el fallback neutro
+`worktree_complete` accepts `commit_title` and `commit_body` (optional strings).
+They are validated as strings and included in the plan hash only for this operation.
+The dry run publishes the composed `commit_subject` and `commit_body`; execute passes them
+to the lifecycle. If missing, the manager uses the neutral fallback
 `Complete <work_id> (generic closure)` / `No delivery description was available
 at closure time.`.

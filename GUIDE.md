@@ -1,45 +1,45 @@
-Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?
+You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
 
-Esta guía explica cómo usar el gestor `worktree-for-agents` para trabajar
-aislado en un worktree antes de tocar la rama principal.
+This guide explains how to use the `worktree-for-agents` manager to work
+isolated in a worktree before touching the main branch.
 
-## Las siete herramientas
+## The seven tools
 
-El servicio MCP expone exactamente siete herramientas:
+The MCP service exposes exactly seven tools:
 
-- `worktree_create`: crea un worktree y su rama para un identificador de trabajo.
-- `worktree_complete`: integra el worktree en la rama base y retira el worktree.
-- `worktree_cleanup`: retira el worktree y su rama sin integrar.
-- `worktree_recover`: recupera una transacción pendiente por su identificador.
-- `worktree_list`: lista los worktrees del repositorio.
-- `worktree_prune`: poda la información de worktrees que ya no existen.
-- `worktree_status`: muestra el estado de un trabajo.
+- `worktree_create`: creates a worktree and its branch for a work identifier.
+- `worktree_complete`: merges the worktree into the base branch and removes the worktree.
+- `worktree_cleanup`: removes the worktree and its branch without merging.
+- `worktree_recover`: recovers a pending transaction by its identifier.
+- `worktree_list`: lists the repository worktrees.
+- `worktree_prune`: prunes worktree information that no longer exists.
+- `worktree_status`: shows the status of a work item.
 
-Todas exigen una ruta absoluta de repositorio Git en `repo`.
+All of them require an absolute Git repository path in `repo`.
 
-## Cuándo ofrecer el worktree
+## When to offer the worktree
 
-Antes de trabajar en la rama principal, ofrece crear un worktree con
-`worktree_create`. Trabaja dentro del worktree y luego integra con
-`worktree_complete`. Si el trabajo se descarta, usa `worktree_cleanup`.
+Before working on the main branch, offer to create a worktree with
+`worktree_create`. Work inside the worktree and then merge with
+`worktree_complete`. If the work is discarded, use `worktree_cleanup`.
 
-## Lanzamiento sin bin
+## Launch without bin
 
-El paquete no expone bin ni `npx`. El servicio MCP se lanza con Node y la
-ruta absoluta del paquete:
+The package exposes no bin or `npx`. The MCP service is launched with Node and the
+absolute package path:
 
 ```sh
-node <paquete>/mcp-server.mjs
+node <package>/mcp-server.mjs
 ```
 
-La CLI se lanza del mismo modo:
+The CLI is launched the same way:
 
 ```sh
-node <paquete>/worktree.mjs --version
+node <package>/worktree.mjs --version
 ```
 
-El diagnóstico de la instalación se obtiene con:
+The installation diagnostics are obtained with:
 
 ```sh
-node <paquete>/setup.mjs
+node <package>/setup.mjs
 ```

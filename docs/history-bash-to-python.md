@@ -1,55 +1,55 @@
-# Histórico: del backend shell al backend Python
+# History: from shell backend to Python backend
 
-Este documento es memoria del proyecto, no un contrato. No repite los contratos
-vigentes y no contiene instrucciones de shell. El comportamiento verificable
-está en [cli-contract-v1.md](cli-contract-v1.md) y en
+This document is project memory, not a contract. It does not repeat the current
+contracts and contains no shell instructions. The verifiable behavior
+lives in [cli-contract-v1.md](cli-contract-v1.md) and in
 [mcp-contract.md](mcp-contract.md).
 
-## Qué había
+## What there was
 
-El gestor implementaba su lifecycle en shell. Ese backend vivía en `worktree.sh`
-y en dos módulos del directorio `lib/`:
-`lib/worktree-manager-core.sh` para el ciclo parent-only y
-`lib/worktree-manager-target-direct.sh` para la ruta target-direct. El mismo
-repositorio mantenía en paralelo la implementación Python, y el harness
-`tests/parity.sh` comparaba ambos backends entre sí: arrancaba un repositorio
-de prueba independiente para cada implementación y exigía que publicaran el
-mismo estado de salida, la misma salida JSON y el mismo estado de repositorio.
+The manager implemented its lifecycle in shell. That backend lived in `worktree.sh`
+and in two modules under the `lib/` directory:
+`lib/worktree-manager-core.sh` for the parent-only cycle and
+`lib/worktree-manager-target-direct.sh` for the target-direct path. The same
+repository maintained the Python implementation in parallel, and the harness
+`tests/parity.sh` compared both backends against each other: it started an independent
+test repository for each implementation and required them to publish the
+same exit state, the same JSON output, and the same repository state.
 
-## Qué hay
+## What there is
 
-`worktree.sh` valida que `python3` esté disponible y que el punto de entrada
-`worktree_manager/__main__.py` exista, y a continuación ejecuta
-`python3 -m worktree_manager`. El paquete `worktree_manager` es la única
-implementación del lifecycle: no hay un motor shell alternativo. Está formado por
-16 módulos, más el marcador de paquete `__init__.py` y el punto de entrada
-`__main__.py`. El servicio MCP se publica por stdio.
+`worktree.sh` validates that `python3` is available and that the entrypoint
+`worktree_manager/__main__.py` exists, and then runs
+`python3 -m worktree_manager`. The `worktree_manager` package is the only
+lifecycle implementation: there is no alternative shell engine. It consists of
+16 modules, plus the package marker `__init__.py` and the entrypoint
+`__main__.py`. The MCP service is published over stdio.
 
-## Por qué
+## Why
 
-Una sola implementación evita dos comportamientos divergentes para la misma
-operación. El harness comparaba la equivalencia entre los dos backends, no la
-corrección de cada uno: demostraba que un camino replicaba al otro, no que
-ninguno de los dos estuviera mal. El paquete usa únicamente la biblioteca
-estándar de Python, sin dependencias externas.
+A single implementation avoids two divergent behaviors for the same
+operation. The harness compared equivalence between the two backends, not the
+correctness of each one: it showed that one path replicated the other, not that
+either one was wrong. The package uses only the Python standard
+library, with no external dependencies.
 
-## Estado real de `tests/parity.sh`
+## Real status of `tests/parity.sh`
 
-`tests/parity.sh` tiene 25 líneas. No compara backends: ejecuta `list --json`
-desde dos directorios de trabajo distintos y exige que ambos documentos JSON
-sean idénticos, y comprueba que la invocación sin el CLI canónico disponible se
-rechaza. Su nombre conserva la referencia a la paridad; su contenido verifica la
-resolución del directorio de trabajo.
+`tests/parity.sh` is 25 lines long. It does not compare backends: it runs `list --json`
+from two different working directories and requires both JSON documents
+to be identical, and checks that invocation without the canonical CLI available is
+rejected. Its name keeps the parity reference; its content verifies
+working-directory resolution.
 
-## Dónde vive la evidencia
+## Where the evidence lives
 
-La evidencia de las fases retiradas permanece en los tags `phase-3-4`
-(`8c7a569`) y `phase-5` (`671effb`). El commit que purga la evidencia del árbol
-activo la deja trazada en su propio mensaje. Los tags no se re-publican y el
-historial no se reescribe; el contenido anterior se consulta con `git show`.
+The evidence of the retired phases remains in tags `phase-3-4`
+(`8c7a569`) and `phase-5` (`671effb`). The commit that purges the evidence from the active
+tree traces it in its own message. Tags are not re-published and
+history is not rewritten; previous content is inspected with `git show`.
 
-## Qué no es
+## What it is not
 
-Este documento no es un contrato, no duplica los contratos y no da
-instrucciones de shell. Para el comportamiento vigente, ver
-[cli-contract-v1.md](cli-contract-v1.md) y [mcp-contract.md](mcp-contract.md).
+This document is not a contract, does not duplicate the contracts, and gives no
+shell instructions. For current behavior, see
+[cli-contract-v1.md](cli-contract-v1.md) and [mcp-contract.md](mcp-contract.md).

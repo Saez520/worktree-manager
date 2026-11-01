@@ -6,7 +6,7 @@ from .mcp_contract import TOOL_NAMES, absolute_repository, error_envelope
 from .mcp_operations import call
 from .models import ManagerError
 
-MCP_INSTRUCTIONS = "Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?"
+MCP_INSTRUCTIONS = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?"
 
 def schemas():
     from .mcp_contract import FIELDS, REQUIRED, output_schema
