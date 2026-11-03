@@ -14,6 +14,19 @@ working directory is never used as a repository default. Unknown arguments
 are rejected. Responses carry contract version 1, operation, repository,
 result, data, warnings, structured error and a nullable transaction ID.
 
+The `initialize` result carries `serverInfo.name "worktree-for-agents"` and
+an `instructions` field with the literal guide text:
+
+```text
+You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
+```
+
+When installed from npm, the service is launched without a bin entry via:
+
+```sh
+node <package>/mcp-server.mjs
+```
+
 A rejected call publishes the same nine-key envelope as an accepted one, with
 `result` set to `failure` or `pending_intervention` and `error` carrying
 `code`, `message` and `exit_code`. The command line publishes that identical
@@ -54,3 +67,12 @@ recovery, worktree/ref/index/status effects, plus MCP-vs-Python-CLI completion
 on independent equivalent repositories. When `MCP_E2E_EVIDENCE_DIR` is set,
 each test writes its request/response trace there as JSON. No evidence or Git
 fixture is written into the checked-out repository by default.
+
+## Closing message
+
+`worktree_complete` accepts `commit_title` and `commit_body` (optional strings).
+They are validated as strings and included in the plan hash only for this operation.
+The dry run publishes the composed `commit_subject` and `commit_body`; execute passes them
+to the lifecycle. If missing, the manager uses the neutral fallback
+`Complete <work_id> (generic closure)` / `No delivery description was available
+at closure time.`.

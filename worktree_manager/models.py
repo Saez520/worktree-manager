@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from . import __version__
+
 
 class ResultKind(str, Enum):
     SUCCESS = "success"
@@ -34,7 +36,7 @@ class OperationResult:
     def json_document(self) -> dict[str, Any]:
         return {
             "contract_version": 1,
-            "tool_version": "1.0.0",
+            "tool_version": __version__,
             "operation": self.operation,
             "result": self.result.value,
             "data": self.data,

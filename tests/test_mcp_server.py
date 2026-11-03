@@ -10,7 +10,13 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(len(result["tools"]), 7)
         self.assertEqual(len({t["name"] for t in result["tools"]}), 7)
     def test_initialize(self):
-        self.assertIn("tools", dispatch({"method": "initialize", "params": {}})["capabilities"])
+        result = dispatch({"method": "initialize", "params": {}})
+        self.assertIn("tools", result["capabilities"])
+        self.assertEqual(result["serverInfo"]["name"], "worktree-for-agents")
+        self.assertEqual(
+            result["instructions"],
+            "Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?",
+        )
 
     def test_stdio_handshake_and_discovery(self):
         process = subprocess.Popen([sys.executable, "-m", "worktree_manager.mcp_transport"],

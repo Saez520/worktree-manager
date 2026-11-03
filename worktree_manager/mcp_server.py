@@ -1,9 +1,12 @@
 """Minimal stdio JSON-RPC server exposing the worktree management tools."""
 import json
 import sys
+from . import __version__
 from .mcp_contract import TOOL_NAMES, absolute_repository, error_envelope
 from .mcp_operations import call
 from .models import ManagerError
+
+MCP_INSTRUCTIONS = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?"
 
 def schemas():
     from .mcp_contract import FIELDS, REQUIRED, output_schema
@@ -13,7 +16,8 @@ def schemas():
               "confirm": {"type":"boolean"}, "plan_hash":{"type":"string"},
               "init_submodules":{"type":"boolean"}, "prepare":{"type":"boolean"}, "verify":{"type":"boolean"},
              "dry_run": {"type": "boolean"}, "discard": {"type": "boolean"},
-             "discard_consent": {"type": "boolean"}, "preserve_dirty": {"type": "boolean"}}
+             "discard_consent": {"type": "boolean"}, "preserve_dirty": {"type": "boolean"},
+             "commit_title": {"type": "string"}, "commit_body": {"type": "string"}}
     props.update({"parent_repo": {"type": "string"}, "submodule_path": {"type": "string"},
                   "target_direct": {"type": "boolean"}})
     return [{"name": name, "description": "Manage repository worktrees", "inputSchema": {
@@ -24,7 +28,7 @@ def dispatch(message):
     method = message.get("method")
     params = message.get("params") or {}
     if method == "initialize":
-        return {"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "worktree-manager", "version": "1.0.0"}}
+        return {"protocolVersion": params.get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "worktree-for-agents", "version": __version__}, "instructions": MCP_INSTRUCTIONS}
     if method == "notifications/initialized": return None
     if method == "ping": return {}
     if method == "tools/list": return {"tools": schemas()}

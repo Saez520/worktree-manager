@@ -26,9 +26,10 @@ git -C "$repo/.worktrees/smoke" config user.email test@example.invalid
 printf changed >> "$repo/.worktrees/smoke/file"
 git -C "$repo/.worktrees/smoke" add file
 git -C "$repo/.worktrees/smoke" commit -qm change
-"$ROOT/worktree.sh" --repo "$repo" complete smoke --base main >/dev/null
+"$ROOT/worktree.sh" --repo "$repo" complete smoke --base main --title "Cierre de prueba" --body "Entrega: prueba. Motivo: verificacion." >/dev/null
 test ! -e "$repo/.worktrees/smoke"
 git -C "$repo" show main:file | grep -q changed
+git -C "$repo" log -1 --format=%s | grep -q "Cierre de prueba"
 
 # The package worktree_manager is the only lifecycle. The retired shell engine
 # must be absent and must not be referenced by the active tree. The forbidden

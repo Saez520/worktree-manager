@@ -19,3 +19,18 @@ class ContractTests(unittest.TestCase):
             validate_request("worktree_create", {"repo":"/tmp"})
 
 if __name__ == "__main__": unittest.main()
+
+
+class CommitFieldsContractTests(unittest.TestCase):
+    def test_complete_accepts_commit_title_and_body(self):
+        validated = validate_request("worktree_complete", {"repo": "/tmp", "work_id": "x", "commit_title": "T", "commit_body": "B"})
+        self.assertEqual(validated["commit_title"], "T")
+        self.assertEqual(validated["commit_body"], "B")
+
+    def test_create_rejects_commit_fields(self):
+        with self.assertRaises(ValueError):
+            validate_request("worktree_create", {"repo": "/tmp", "work_id": "x", "commit_title": "T"})
+
+    def test_commit_fields_must_be_strings(self):
+        with self.assertRaises(ValueError):
+            validate_request("worktree_complete", {"repo": "/tmp", "work_id": "x", "commit_title": 1})

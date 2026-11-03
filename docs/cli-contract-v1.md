@@ -32,6 +32,20 @@ bash tests/smoke.sh
 bash tests/parity.sh
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
+PYTHONPATH=. python3 -m unittest tests.test_npm_launchers tests.test_npm_setup tests.test_npm_package -v
+node scripts/verify-package.mjs
 ```
 
 The usage suite parses each pre-dispatch usage failure, including the unknown option, the unknown or missing command, the missing global value and an invalid `--version` arity, checks the stable exit code `2`, and checks the help syntax of the target-direct `complete` and `recover` actions. The compatibility suite is independent of any orchestration worktree path. Every publication records the date, the commit and the output of these commands, and it does not cite a suite that no longer exists.
+
+## Closing message
+
+`complete` accepts optional `--title TEXT` and `--body TEXT`. The manager
+composes the subject and body deterministically: it normalizes the title to a
+single line, normalizes CRLF to LF in the body, and guarantees that `work_id`
+appears in the subject (appending it as ` [work_id]` when missing). When no
+title is passed, the subject is `Complete <work_id> (generic closure)` and the body is
+`No delivery description was available at closure time.` The body is only
+written when non-empty. Both values are stored in `meta.json` as
+`commit_subject` and `commit_body`, and the dry run publishes them. A
+title or body change between preflight and execute causes `plan_mismatch`.

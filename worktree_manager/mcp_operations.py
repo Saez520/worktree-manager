@@ -30,7 +30,9 @@ def call(tool, request):
             req["base"] = req.get("base") or next((b for b in ("development", "main", "trunk") if lifecycle.git.run(("show-ref", "--verify", "--quiet", f"refs/heads/{b}"), check=False).returncode == 0), "main")
         if tool == "worktree_complete" and not req.get("transaction_id") and dry:
             req["transaction_id"] = __import__("uuid").uuid4().hex
-        fields = ("operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest")
+        fields = ["operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"]
+        if tool == "worktree_complete":
+            fields = fields + ["commit_title", "commit_body"]
         def plan_for(digest):
             return {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
         if dry:
@@ -113,7 +115,9 @@ def call(tool, request):
             if str(path) not in {item["path"] for item in lifecycle.list()} or not path.is_dir(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
             if lifecycle.git.run(("symbolic-ref", "--short", "HEAD")).stdout.strip()!=base: raise ManagerError("invalid_identity", f"Current branch must be '{base}'", 3)
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
-            data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest}
+            from .commit_message import compose_commit_message
+            _subject, _body = compose_commit_message(req["work_id"], req.get("commit_title"), req.get("commit_body"))
+            data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest, "commit_subject": _subject, "commit_body": _body}
         else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"), req.get("plan_hash"), req)
     elif tool == "worktree_cleanup":
         if req.get("discard") and req.get("discard_consent") is not True:

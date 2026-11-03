@@ -1,44 +1,54 @@
-# Instalación y uso del gestor de worktrees
+# Installation and usage of the worktree manager
 
-Esta guía explica cómo instalar el gestor desde un clon aislado y cómo usarlo
-sobre un repositorio de prueba. No cubre la integración con ningún consumidor:
-esa parte se documenta en el repositorio que integra el gestor.
+This guide explains how to install the manager as an npm package and how to use it
+on a test repository. Integration with a specific consumer
+is documented in the repository that integrates the manager.
 
-Los ejemplos usan `$HOME` porque `--repo` exige una ruta absoluta. Sustitúyelo
-por la ruta real donde clones el gestor.
+The examples use `$HOME` because `--repo` requires an absolute path. `<package>`
+is the installed package path.
 
-## 1. Requisitos
+## 1. Requirements
 
-Comprueba las versiones disponibles:
+Check the available versions:
 
 ```sh
 python3 --version
 git --version
+node --version
 ```
 
-- **Python 3.9 o posterior.** El entrypoint `worktree.sh` sólo comprueba que
-  `python3` esté en el `PATH`; no verifica la versión. El piso de 3.9 lo
-  valida el instalador del consumidor, no este repositorio.
-- **Git 2.17.0 o posterior**, por `git worktree remove`. La línea base de las
-  pruebas es Git 2.54.0. El gestor no comprueba la versión de Git en tiempo de
-  ejecución.
-- **`bash`** para ejecutar las suites de pruebas.
+- **Python 3.9 or later.** The package postinstall checks the
+  3.9 floor and fails visibly if it is missing or older. `node
+  <package>/setup.mjs` reports the detected interpreter.
+- **Git 2.17.0 or later**, for `git worktree remove`. The test baseline is
+  Git 2.54.0. The manager does not check the Git version at runtime.
+- **Node 18 or later** for the `mcp-server.mjs`, `worktree.mjs`
+  and `setup.mjs` launchers.
+- **`bash`** to run the test suites.
 
-## 2. Clonar e instalar
+## 2. Install the package
 
 ```sh
-git clone git@github.com:Saez520/worktree-manager.git "$HOME/worktree-manager"
-cd "$HOME/worktree-manager"
-./worktree.sh --version
+npm install -g worktree-for-agents@latest
+pnpm add -g worktree-for-agents@latest
 ```
 
-La salida es `1.0.0`. No hay `pip install`, ni paquete que instalar, ni
-dependencias que resolver: el gestor usa sólo la biblioteca estándar de Python.
+Check the diagnostics:
 
-## 3. Un repositorio de prueba
+```sh
+node <package>/setup.mjs
+```
 
-El gestor exige que la ruta del worktree esté ignorada por Git, y
-`.worktrees/` en el `.gitignore` cumple esa condición.
+The package exposes no bin or `npx`: the MCP is launched with `node
+<package>/mcp-server.mjs` and the CLI with `node <package>/worktree.mjs`. The
+repository clone is for development only. There is no `pip install` and no
+dependencies to resolve: the manager uses only the Python standard
+library. Once installed, the manager works without a network.
+
+## 3. A test repository
+
+The manager requires the worktree path to be ignored by Git, and
+`.worktrees/` in `.gitignore` satisfies that condition.
 
 ```sh
 mkdir "$HOME/demo" && cd "$HOME/demo"
@@ -51,88 +61,113 @@ git add file .gitignore
 git commit -m "base"
 ```
 
-Crea el worktree:
+Create the worktree:
 
 ```sh
 "$HOME/worktree-manager/worktree.sh" --repo "$HOME/demo" create demo --base main
 ```
 
-Qué deja cada paso:
+What each step leaves behind:
 
-- `git init` crea el repositorio y su rama `main`.
-- El commit inicial fija la base sobre la que se construye el worktree.
-- `create` crea la rama `worktree/demo`, el worktree en `$HOME/demo/.worktrees/demo`
-  y el journal de la transacción en el directorio de estado del repositorio.
+- `git init` creates the repository and its `main` branch.
+- The initial commit pins the base on top of which the worktree is built.
+- `create` creates the `worktree/demo` branch, the worktree at `$HOME/demo/.worktrees/demo`
+  and the transaction journal in the repository state directory.
 
-Comprueba el estado:
+Check the status:
 
 ```sh
 "$HOME/worktree-manager/worktree.sh" --repo "$HOME/demo" list
 ```
 
-Trabaja dentro del worktree y luego intégralo:
+Work inside the worktree and then merge it:
 
 ```sh
 cd "$HOME/demo/.worktrees/demo"
-printf 'cambio\n' >> file
+printf 'change\n' >> file
 git add file
-git commit -m "cambio"
+git commit -m "change"
 cd "$HOME/demo"
 "$HOME/worktree-manager/worktree.sh" --repo "$HOME/demo" complete demo --base main
 ```
 
-`complete` exige que el repositorio esté en la rama base, que el worktree no
-tenga cambios sin commitear y que el destino tampoco los tenga, salvo que se
-use `--preserve-dirty`. Al terminar, el cambio queda integrado como un commit
-de squash en `main`, y el worktree y su rama se retiran.
+`complete` requires the repository to be on the base branch, the worktree to have
+no uncommitted changes, and the destination to have none either, unless
+`--preserve-dirty` is used. When finished, the change is merged as a squash
+commit on `main`, and the worktree and its branch are removed.
 
-## 4. Configuración
+To leave an expressive closing commit, pass `--title` and optionally
+`--body`:
 
-La configuración es un archivo de `clave=valor`. El gestor lo toma de
-`.worktree-manager.conf` en la raíz del repositorio, o del archivo que se le
-pase con `--config`, que debe existir y ser una ruta absoluta. Si se pasan
-ambos, `--config` prevalece. Después, la variable de entorno
-`WORKTREE_MANAGER_<CLAVE>`, con la clave en mayúsculas, reemplaza el valor
-leído del archivo.
+```sh
+"$HOME/worktree-manager/worktree.sh" --repo "$HOME/demo" complete demo --base main \
+  --title "Demo closing" --body "Delivery: merged change. Reason: verification."
+```
 
-Las once claves y sus valores por defecto son:
+If `--title` is not passed, the manager uses the generic fallback:
+`Complete <work_id> (generic closure)` with the body
+`No delivery description was available at closure time.`.
 
-| Clave | Por defecto | Restricción |
+## 4. Configuration
+
+The configuration is a `key=value` file. The manager reads it from
+`.worktree-manager.conf` at the repository root, or from the file passed
+with `--config`, which must exist and be an absolute path. If both are
+given, `--config` wins. Afterwards, the environment variable
+`WORKTREE_MANAGER_<KEY>`, with the key in uppercase, overrides the value
+read from the file.
+
+The eleven keys and their default values are:
+
+| Key | Default | Restriction |
 |---|---|---|
-| `worktrees_dir` | `.worktrees` | No puede empezar por `-` |
+| `worktrees_dir` | `.worktrees` | Must not start with `-` |
 | `branch_prefix` | `worktree/` | — |
-| `state_dir` | `worktree-manager` | Ruta relativa segura |
-| `backup_dir` | `backups` | No es una ruta absoluta y no contiene `..` |
-| `backup_ref_prefix` | `worktree-manager/backups` | Sin `..` |
-| `lock_dir` | `locks` | Ruta relativa segura |
-| `prepare_command` | `''` (vacío) | Requerida cuando `prepare_enabled=true` |
-| `verify_command` | `''` (vacío) | Requerida cuando `verify_enabled=true` |
-| `prepare_enabled` | `false` | `true` o `false` |
-| `verify_enabled` | `false` | `true` o `false` |
-| `preserve_dirty` | `false` | `true` o `false` |
+| `state_dir` | `worktree-manager` | Safe relative path |
+| `backup_dir` | `backups` | Not an absolute path and contains no `..` |
+| `backup_ref_prefix` | `worktree-manager/backups` | No `..` |
+| `lock_dir` | `locks` | Safe relative path |
+| `prepare_command` | `''` (empty) | Required when `prepare_enabled=true` |
+| `verify_command` | `''` (empty) | Required when `verify_enabled=true` |
+| `prepare_enabled` | `false` | `true` or `false` |
+| `verify_enabled` | `false` | `true` or `false` |
+| `preserve_dirty` | `false` | `true` or `false` |
 
-Cada clave puede aparecer una sola vez. Una clave desconocida, una línea sin
-`=`, un booleano inválido o una ruta insegura se rechazan como
-`invalid_configuration` con código de salida `3`, antes de cualquier efecto.
+Each key may appear only once. An unknown key, a line without
+`=`, an invalid boolean, or an unsafe path is rejected as
+`invalid_configuration` with exit code `3`, before any effect.
 
-## 5. Contratos de salida
+## 5. Output contracts
 
-- `--json` publica un único documento JSON con siete claves: `contract_version`,
-  `tool_version`, `operation`, `result`, `data`, `warnings` y `error`.
-- `--request-json <archivo|->` publica el mismo documento de nueve claves que
-  usa el transporte MCP: las siete anteriores más `repository` y
-  `transaction_id`. Acepta `--json` de forma opcional y el documento publicado
-  no cambia.
-- Un dry run de `create` publica `planned: true` y no crea worktree ni rama.
-  `init_submodules_result` es `planned` o `not_requested`, y `prepare` y
-  `verify` son `planned` o `skipped`.
-- El servicio MCP se publica por stdio y expone siete herramientas:
+- `--json` publishes a single JSON document with seven keys: `contract_version`,
+  `tool_version`, `operation`, `result`, `data`, `warnings` and `error`.
+- `--request-json <file|->` publishes the same nine-key document used by
+  the MCP transport: the previous seven plus `repository` and
+  `transaction_id`. It optionally accepts `--json` and the published document
+  does not change.
+- A dry run of `create` publishes `planned: true` and creates no worktree or branch.
+  `init_submodules_result` is `planned` or `not_requested`, and `prepare` and
+  `verify` are `planned` or `skipped`.
+- The MCP service is published over stdio and exposes seven tools. From the
+  installed package it is launched without bin:
+
+```sh
+node <package>/mcp-server.mjs
+```
+
+  `initialize` publishes the guide in `instructions`:
+
+```text
+You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
+```
+
+  For development, the transport also starts from the checkout:
 
 ```sh
 PYTHONPATH=. python3 -m worktree_manager.mcp_transport
 ```
 
-## 6. Pruebas
+## 6. Tests
 
 ```sh
 bash tests/cli-usage.sh
@@ -144,30 +179,35 @@ PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
 ```
 
-## 7. Consumo como submódulo
+## 7. Consumption as a submodule and coexistence
 
-Un repositorio consumidor puede materializar el gestor como submódulo. La
-regla es única: el checkout materializado y el gitlink registrado deben ser el
-mismo commit. El gestor no se empaqueta ni se copia a un target instalado, y no
-se promete una distribución portable.
+A consumer repository may materialize the manager as a submodule. The
+rule is unique: the materialized checkout and the registered gitlink must be the
+same commit.
 
-## 8. Solución de problemas
+The npm package `worktree-for-agents` is independent of the submodule: it ships
+the Python runtime and works without a network once installed. `node
+<package>/setup.mjs` diagnoses which installation is active when the
+npm package, the global FlowTask copy, and the local submodule coexist. The repository
+clone is for development only and no other distribution is promised.
 
-- **`python3` no está en el `PATH`.** El entrypoint termina con el código `127`
-  y el mensaje
+## 8. Troubleshooting
+
+- **`python3` is not on the `PATH`.** The entrypoint exits with code `127`
+  and the message
   `worktree manager requires Python 3 (python3) on PATH; install Python 3 and retry.`
-- **Falta el punto de entrada del paquete.** El entrypoint termina con el
-  código `126` y el mensaje
-  `worktree manager Python entry point is missing: <ruta>/worktree_manager/__main__.py`.
-- **La ruta del repositorio es relativa.** La operación se rechaza con el
-  código `invalid_repository`, el código de salida `3` y el mensaje
+- **The package entrypoint is missing.** The entrypoint exits with
+  code `126` and the message
+  `worktree manager Python entry point is missing: <path>/worktree_manager/__main__.py`.
+- **The repository path is relative.** The operation is rejected with
+  code `invalid_repository`, exit code `3`, and the message
   `Repository path must be absolute`.
-- **La versión de Python es anterior a 3.9.** El instalador del consumidor lo
-  informa como `python <version> is older than the required 3.9`. El entrypoint
-  de este repositorio no comprueba la versión.
+- **The Python version is older than 3.9.** The consumer installer reports
+  it as `python <version> is older than the required 3.9`. The entrypoint
+  of this repository does not check the version.
 
-## 9. Qué no cubre
+## 9. What it does not cover
 
-Esta guía no cubre la integración con un consumidor: ni el adaptador, ni el
-bridge, ni la validación del gitlink, ni el procedimiento de instalación del
-consumidor. Eso se documenta en el repositorio consumidor.
+This guide does not cover integration with a consumer: neither the adapter, nor the
+bridge, nor gitlink validation, nor the consumer installation procedure.
+That is documented in the consumer repository.
