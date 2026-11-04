@@ -95,27 +95,65 @@ if (pyFiles.length === 0) {
   fail("worktree_manager contains no .py files");
 }
 
-const GUIDE_LITERAL = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?";
+const INSTRUCTION = "Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying.";
+const TOOL_NAMES = [
+  "worktree_create", "worktree_complete", "worktree_cleanup",
+  "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
+];
+const DESCRIPTIONS = {
+  worktree_create: "Creates an isolated worktree and its branch for a work identifier; use it before starting a change, spec, or flow so the base branch stays untouched.",
+  worktree_complete: "Integrates the worktree into the base branch and removes it; use it when the isolated work is finished and should land on the base branch.",
+  worktree_cleanup: "Removes the worktree and its branch without integrating; use it to discard abandoned work and, with discard and discard_consent, its uncommitted changes.",
+  worktree_recover: "Continues a pending transaction by its identifier; use it after an interrupted create or complete before starting another operation.",
+  worktree_list: "Lists the worktrees registered for the repository; use it to find existing work identifiers before creating or closing one.",
+  worktree_prune: "Removes worktree records whose directories no longer exist; use it after deleting a worktree by hand to clean the stale registration.",
+  worktree_status: "Reports one work item's worktree, journal transactions, and pending intervention; use it before completing or cleaning up to confirm the current state.",
+};
+
 let guide;
 try {
   guide = readLocal("GUIDE.md");
 } catch {
   fail("cannot read GUIDE.md");
 }
-if (!guide.includes(GUIDE_LITERAL)) {
-  fail("GUIDE.md does not contain the literal guide text");
+if (!guide.includes(INSTRUCTION)) {
+  fail("GUIDE.md does not contain the published instruction");
 }
+for (const name of TOOL_NAMES) {
+  if (!guide.includes(`\`${name}\``)) {
+    fail(`GUIDE.md does not list ${name}`);
+  }
+}
+
+let contract;
+try {
+  contract = readLocal(join("worktree_manager", "mcp_contract.py"));
+} catch {
+  fail("cannot read worktree_manager/mcp_contract.py");
+}
+if (!contract.includes(INSTRUCTION)) {
+  fail("mcp_contract.py does not contain the published instruction");
+}
+for (const name of TOOL_NAMES) {
+  if (!contract.includes(DESCRIPTIONS[name])) {
+    fail(`mcp_contract.py does not contain the description for ${name}`);
+  }
+}
+if (new Set(Object.values(DESCRIPTIONS)).size !== TOOL_NAMES.length) {
+  fail("operation descriptions are not all distinct");
+}
+
 let server;
 try {
   server = readLocal(join("worktree_manager", "mcp_server.py"));
 } catch {
   fail("cannot read worktree_manager/mcp_server.py");
 }
-if (!server.includes(GUIDE_LITERAL)) {
-  fail("mcp_server.py does not contain the literal guide text");
-}
 if (!server.includes("worktree-for-agents")) {
   fail('mcp_server.py does not reference server name "worktree-for-agents"');
+}
+if (server.includes("Manage repository worktrees")) {
+  fail("mcp_server.py still publishes the generic tool description");
 }
 
 // Version must live only in __init__.py within the runtime.
@@ -129,20 +167,28 @@ for (const file of pyFiles) {
   }
 }
 
-// Independence: runtime must not mention FlowTask except setup.mjs.
-const runtimeRelPaths = [
+// Independence: no published surface may mention a retired consumer.
+const publishedRelPaths = [
   ...pyFiles.map((f) => join("worktree_manager", f)),
   "mcp-server.mjs",
   "worktree.mjs",
+  "setup.mjs",
+  "worktree.sh",
+  "GUIDE.md",
+  "README.md",
+  join("docs", "installation.md"),
+  join("docs", "mcp-contract.md"),
   join("scripts", "python.mjs"),
   join("scripts", "postinstall.mjs"),
+  "package.json",
 ];
-const forbidden = ["flowtask", ".flowtask", "flowtask_worktree_consume"];
-for (const rel of runtimeRelPaths) {
+const consumerName = "flow" + "task";
+const forbidden = [consumerName, "flow" + " task", "flow" + "-task"];
+for (const rel of publishedRelPaths) {
   const source = readLocal(rel).toLowerCase();
   for (const token of forbidden) {
     if (source.includes(token)) {
-      fail(`${rel} mentions ${token}; only setup.mjs may diagnose coexistence`);
+      fail(`${rel} mentions a retired consumer identifier; remove it from the published surface`);
     }
   }
 }
