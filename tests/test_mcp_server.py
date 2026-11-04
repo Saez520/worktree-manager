@@ -15,7 +15,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(result["serverInfo"]["name"], "worktree-for-agents")
         self.assertEqual(
             result["instructions"],
-            "Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?",
+            "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?",
         )
 
     def test_stdio_handshake_and_discovery(self):

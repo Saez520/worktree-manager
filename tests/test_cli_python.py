@@ -19,7 +19,7 @@ class PythonCliTests(unittest.TestCase):
         return directory
     def test_help_and_version_outside_repository(self):
         help_result=self.run_cli('--help'); version=self.run_cli('--version')
-        self.assertEqual(help_result.returncode,0); self.assertEqual(version.stdout.strip(),'1.0.0')
+        self.assertEqual(help_result.returncode,0); self.assertEqual(version.stdout.strip(),'1.1.0')
     def test_usage_error_is_single_json_document(self):
         result=self.run_cli('--json','not-a-command')
         self.assertEqual(result.returncode,2); doc=json.loads(result.stdout)
@@ -89,6 +89,38 @@ class PythonCliTests(unittest.TestCase):
             log=subprocess.run(['git','-C',str(repo),'log','-1','--format=%s%n%b'],check=True,capture_output=True,text=True).stdout
             self.assertIn('Cierre de prueba [feature]',log)
             self.assertIn('Entrega: prueba. Motivo: verificacion.',log)
+
+    def test_complete_preserve_history_empty_branch_fails_without_mutation(self):
+        """gap_ref: C4 (rama sin commits nuevos con preserve-history).
+
+        criterio: una rama sin commits por delante de la base falla como sin
+        cambios, sin retirar el area ni la rama.
+        defecto: una regresion que integre o retire ante una rama vacia.
+        why_not_detected: el plan declaraba una comprobacion manual; no habia
+        caso automatizado de complete con preserve-history sobre rama vacia.
+        comportamiento observable: exit 5 con operation_failed, el area y la
+        ref siguen existiendo y HEAD no cambia.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            repo=self.repository(Path(d)/'repo')
+            created=self.run_cli('--repo',str(repo),'--json','create','empty','--base','main')
+            self.assertEqual(created.returncode,0,created.stderr)
+            head_before=subprocess.run(['git','-C',str(repo),'rev-parse','HEAD'],
+                                       check=True,text=True,stdout=subprocess.PIPE).stdout.strip()
+            result=self.run_cli('--repo',str(repo),'--json','complete','empty','--base','main',
+                                '--merge-strategy','preserve-history')
+            self.assertEqual(result.returncode,5,result.stderr)
+            document=json.loads(result.stdout)
+            self.assertEqual(document['error']['code'],'operation_failed')
+            self.assertEqual(document['error']['exit_code'],5)
+            self.assertTrue((repo/'.worktrees/empty').is_dir())
+            branch=subprocess.run(['git','-C',str(repo),'show-ref','--verify','--quiet',
+                                   'refs/heads/worktree/empty'])
+            self.assertEqual(branch.returncode,0)
+            head_after=subprocess.run(['git','-C',str(repo),'rev-parse','HEAD'],
+                                      check=True,text=True,stdout=subprocess.PIPE).stdout.strip()
+            self.assertEqual(head_after,head_before)
+            self.assertFalse((repo/'.git/worktree-manager/transactions').exists())
 
     def test_request_json_usage_failure_publishes_the_contract_envelope(self):
         rejected=self.run_cli('--request-json','-','--json','unexpected-argument')

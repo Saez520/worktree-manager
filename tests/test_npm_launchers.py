@@ -11,7 +11,7 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 MCP_SERVER = PACKAGE_DIR / "mcp-server.mjs"
 CLI = PACKAGE_DIR / "worktree.mjs"
-GUIDE_LITERAL = "Vas a implementar un cambio, ejecutar una spec o iniciar un flujo. ¿Quieres crear un worktree para hacerlo aislado?"
+GUIDE_LITERAL = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?"
 
 
 def run_node(script, args=(), stdin_lines=(), env_extra=None):
@@ -61,7 +61,7 @@ class NpmLauncherTests(unittest.TestCase):
             ["node", str(CLI), "--version"], text=True, capture_output=True, cwd=str(PACKAGE_DIR)
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "1.0.0")
+        self.assertEqual(result.stdout.strip(), "1.1.0")
 
     def test_no_python_exits_127(self):
         code, stdout, stderr = run_node(
