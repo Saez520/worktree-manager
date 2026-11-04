@@ -1,8 +1,7 @@
 # Worktree manager
 
 Standalone manager to create, complete, clean up, and recover worktrees of a
-Git repository. The project does not know FlowTask and does not depend on its paths, legacy
-refs, or coordination mechanisms.
+Git repository. It ships a stdio MCP service that any coding agent can use.
 
 ## Requirements
 
@@ -18,8 +17,8 @@ refs, or coordination mechanisms.
 
 ## Installation
 
-The manager is distributed as the npm package `worktree-for-agents`, version
-`1.0.0`, with no bin or `npx`:
+The manager is distributed as the npm package `worktree-for-agents`, with no
+bin or `npx`:
 
 ```sh
 npm install -g worktree-for-agents@latest
@@ -31,6 +30,16 @@ Check the installation diagnostics:
 ```sh
 node <package>/setup.mjs
 ```
+
+Register the MCP service in each environment with the included writers:
+
+```sh
+node <package>/setup.mjs --write-opencode
+cd <project> && node <package>/setup.mjs --write-claude
+```
+
+The guarantees of each registration are documented in
+[the installation guide](docs/installation.md).
 
 The repository clone is for development only. There is no `pip install` and no
 dependencies to resolve: the manager uses only the Python standard
@@ -82,7 +91,7 @@ node <package>/worktree.mjs --version
 The MCP `initialize` publishes the guide in `instructions`:
 
 ```text
-You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
+Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying.
 ```
 
 For development, the transport also starts from the checkout:
@@ -172,9 +181,5 @@ The history records the transition and does not replace the contracts.
 ## Source and distribution
 
 This repository is the source of truth for the implementation, the contracts,
-the installation, and the manager history.
-
-The consumer that integrates this repository documents the adapter, the bridge, and
-the submodule boundary: **that integration documentation lives in the
-consumer repository**. The manager does not keep a vendored copy of itself
-and does not know the consumer.
+the installation, and the manager history. The npm package is the only
+distribution channel; the manager does not keep a vendored copy of itself.

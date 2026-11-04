@@ -12,16 +12,6 @@ function readPackage() {
   return JSON.parse(raw);
 }
 
-function globalFlowtaskDir() {
-  if (process.platform === "win32") {
-    const base = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(base, "FlowTask", "worktree-manager");
-  }
-  const xdg = process.env.XDG_CONFIG_HOME;
-  const base = xdg ? join(xdg, "flowtask") : join(homedir(), ".config", "flowtask");
-  return join(base, "worktree-manager");
-}
-
 function opencodeConfigCandidates() {
   if (process.platform === "win32") {
     const base = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
@@ -34,70 +24,67 @@ function opencodeConfigCandidates() {
   return [join(homedir(), ".config", "opencode", "opencode.json")];
 }
 
-function checkoutStatus(dir) {
-  if (!dir || !existsSync(join(dir, "worktree_manager", "__main__.py"))) {
-    return { present: false };
+function readEnvironment(configPath, key, references) {
+  const environment = { path: configPath, present: existsSync(configPath), entries: {}, refsThisPackage: [] };
+  if (!environment.present) {
+    return environment;
   }
-  const transport = join(dir, "worktree_manager", "mcp_transport.py");
-  return { present: true, mcpTransport: existsSync(transport) };
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    const entries = parsed && parsed[key];
+    environment.entries = entries && typeof entries === "object" && !Array.isArray(entries) ? entries : {};
+  } catch {
+    environment.parseError = true;
+    environment.entries = {};
+  }
+  environment.refsThisPackage = Object.entries(environment.entries)
+    .filter(([, value]) => value && typeof value === "object" && references(value))
+    .map(([name]) => name);
+  return environment;
 }
 
 function collectStatus() {
   const pkg = readPackage();
   const probed = probePython();
-  const npmPackage = {
-    kind: "npm package",
-    path: packageDir,
-    version: pkg.version,
-    active: true,
-  };
-  const globalDir = globalFlowtaskDir();
-  const globalStatus = checkoutStatus(globalDir);
-  const globalCopy = {
-    kind: "FlowTask global copy",
-    path: globalDir,
-    present: globalStatus.present || false,
-  };
-  const submoduleDir = resolve(join(process.cwd(), ".flowtask", "scripts", "worktree-manager"));
-  const submoduleStatus = checkoutStatus(submoduleDir);
-  const submodule = {
-    kind: "local submodule",
-    path: submoduleDir,
-    present: submoduleStatus.present || false,
-  };
-  const configPaths = opencodeConfigCandidates();
-  const configPath = configPaths[0];
-  let opencode = { path: configPath, present: existsSync(configPath), entries: {} };
-  if (opencode.present) {
-    try {
-      const parsed = JSON.parse(readFileSync(configPath, "utf8"));
-      const mcp = (parsed && parsed.mcp) || {};
-      opencode.entries = mcp;
-    } catch {
-      opencode.parseError = true;
-    }
-  }
-  const expectedCommand = ["node", join(packageDir, "mcp-server.mjs")];
-  let activeEntry = "npm package";
-  const refsThisPackage = [];
-  for (const [name, value] of Object.entries(opencode.entries || {})) {
-    const cmd = value && value.command;
-    if (Array.isArray(cmd) && cmd.length === 2 && cmd[0] === "node" && typeof cmd[1] === "string") {
-      if (resolve(cmd[1]) === resolve(expectedCommand[1])) {
-        refsThisPackage.push(name);
-      }
-    }
-  }
+  const serverPath = join(packageDir, "mcp-server.mjs");
+  const opencode = readEnvironment(opencodeConfigCandidates()[0], "mcp", (entry) =>
+    Array.isArray(entry.command) &&
+    entry.command.length === 2 &&
+    entry.command[0] === "node" &&
+    typeof entry.command[1] === "string" &&
+    resolve(entry.command[1]) === resolve(serverPath)
+  );
+  const claude = readEnvironment(join(process.cwd(), ".mcp.json"), "mcpServers", (entry) =>
+    entry.command === "node" &&
+    Array.isArray(entry.args) &&
+    typeof entry.args[0] === "string" &&
+    resolve(entry.args[0]) === resolve(serverPath)
+  );
   return {
     version: pkg.version,
     packagePath: packageDir,
     interpreter: probed,
-    installations: [npmPackage, globalCopy, submodule],
-    active: activeEntry,
-    opencode,
-    expectedCommand,
-    refsThisPackage,
+    launch: ["node", serverPath],
+    installations: [{ kind: "npm package", path: packageDir, version: pkg.version, active: true }],
+    active: "npm package",
+    environments: { opencode, claude },
   };
+}
+
+function printEnvironment(label, environment) {
+  const lines = [];
+  lines.push(`${label} config: ${environment.path} (${environment.present ? "present" : "absent"})`);
+  const names = Object.keys(environment.entries || {});
+  if (names.length === 0) {
+    lines.push(`${label} mcp entries: (none)`);
+  } else {
+    lines.push(`${label} mcp entries:`);
+    for (const name of names) {
+      const marker = environment.refsThisPackage.includes(name) ? " (references this package)" : "";
+      lines.push(`  - ${name}${marker}`);
+    }
+  }
+  return lines;
 }
 
 function printHuman(status) {
@@ -109,26 +96,14 @@ function printHuman(status) {
   } else {
     lines.push(`python: not found (requires 3.9+)`);
   }
+  lines.push(`launch: ${status.launch.join(" ")}`);
   lines.push("installations:");
   for (const inst of status.installations) {
-    if (inst.kind === "npm package") {
-      lines.push(`  - npm package: ${inst.path} (version ${inst.version}, active)`);
-    } else {
-      lines.push(`  - ${inst.kind}: ${inst.path} (${inst.present ? "present" : "absent"})`);
-    }
+    lines.push(`  - ${inst.kind}: ${inst.path} (version ${inst.version}, active)`);
   }
   lines.push(`active: ${status.active}`);
-  lines.push(`opencode config: ${status.opencode.path} (${status.opencode.present ? "present" : "absent"})`);
-  const names = Object.keys(status.opencode.entries || {});
-  if (names.length === 0) {
-    lines.push("mcp entries: (none)");
-  } else {
-    lines.push("mcp entries:");
-    for (const name of names) {
-      const marker = status.refsThisPackage.includes(name) ? " (references this package)" : "";
-      lines.push(`  - ${name}${marker}`);
-    }
-  }
+  lines.push(...printEnvironment("opencode", status.environments.opencode));
+  lines.push(...printEnvironment("claude code", status.environments.claude));
   process.stdout.write(lines.join("\n") + "\n");
 }
 
@@ -137,7 +112,6 @@ function deepEqual(a, b) {
 }
 
 function runWriteOpencode() {
-  const status = collectStatus();
   const candidates = opencodeConfigCandidates();
   const configPath = candidates[0];
   const configDir = dirname(configPath);
@@ -197,9 +171,63 @@ function runWriteOpencode() {
   process.stdout.write(`Registered mcp.worktree-for-agents in ${configPath}.\n`);
 }
 
+function runWriteClaude() {
+  const configPath = join(process.cwd(), ".mcp.json");
+  let parsed = {};
+  if (existsSync(configPath)) {
+    try {
+      parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    } catch {
+      process.stderr.write(`Claude Code config is not valid JSON: ${configPath}. Fix it manually and rerun.\n`);
+      process.exit(1);
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    parsed = {};
+  }
+  if (!parsed.mcpServers || typeof parsed.mcpServers !== "object" || Array.isArray(parsed.mcpServers)) {
+    parsed.mcpServers = {};
+  }
+  const expected = { command: "node", args: [join(packageDir, "mcp-server.mjs")] };
+  const existing = parsed.mcpServers["worktree-for-agents"];
+  if (existing !== undefined) {
+    if (deepEqual(existing, expected)) {
+      process.stdout.write("Claude Code config already configured for worktree-for-agents.\n");
+      process.exit(0);
+    }
+    process.stderr.write(
+      `Refusing to overwrite mcpServers.worktree-for-agents: existing value differs from expected.\nExisting: ${JSON.stringify(existing)}\nExpected: ${JSON.stringify(expected)}\n`
+    );
+    process.exit(1);
+  }
+  parsed.mcpServers["worktree-for-agents"] = expected;
+  const next = JSON.stringify(parsed, null, 2) + "\n";
+  if (existsSync(configPath)) {
+    copyFileSync(configPath, `${configPath}.bak`);
+  }
+  const stagingDir = mkdtempSync(join(tmpdir(), "worktree-for-agents-"));
+  try {
+    const staging = join(stagingDir, "mcp.json");
+    writeFileSync(staging, next, "utf8");
+    JSON.parse(readFileSync(staging, "utf8"));
+    renameSync(staging, configPath);
+    JSON.parse(readFileSync(configPath, "utf8"));
+  } finally {
+    try {
+      rmSync(stagingDir, { recursive: true, force: true });
+    } catch {}
+  }
+  process.stdout.write(`Registered mcpServers.worktree-for-agents in ${configPath}.\n`);
+}
+
 const args = new Set(process.argv.slice(2));
-if (args.has("--write-opencode")) {
+if (args.has("--write-opencode") && args.has("--write-claude")) {
+  process.stderr.write("Choose one write target: --write-opencode or --write-claude.\n");
+  process.exit(1);
+} else if (args.has("--write-opencode")) {
   runWriteOpencode();
+} else if (args.has("--write-claude")) {
+  runWriteClaude();
 } else if (args.has("--json")) {
   const status = collectStatus();
   process.stdout.write(JSON.stringify(status, null, 2) + "\n");

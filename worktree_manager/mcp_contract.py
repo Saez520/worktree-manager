@@ -10,6 +10,16 @@ TOOL_NAMES = (
     "worktree_create", "worktree_complete", "worktree_cleanup",
     "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
 )
+MCP_INSTRUCTIONS = "Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying."
+TOOL_DESCRIPTIONS = {
+    "worktree_create": "Creates an isolated worktree and its branch for a work identifier; use it before starting a change, spec, or flow so the base branch stays untouched.",
+    "worktree_complete": "Integrates the worktree into the base branch and removes it; use it when the isolated work is finished and should land on the base branch.",
+    "worktree_cleanup": "Removes the worktree and its branch without integrating; use it to discard abandoned work and, with discard and discard_consent, its uncommitted changes.",
+    "worktree_recover": "Continues a pending transaction by its identifier; use it after an interrupted create or complete before starting another operation.",
+    "worktree_list": "Lists the worktrees registered for the repository; use it to find existing work identifiers before creating or closing one.",
+    "worktree_prune": "Removes worktree records whose directories no longer exist; use it after deleting a worktree by hand to clean the stale registration.",
+    "worktree_status": "Reports one work item's worktree, journal transactions, and pending intervention; use it before completing or cleaning up to confirm the current state.",
+}
 FIELDS = {
     "worktree_create": {"repo", "work_id", "base", "dry_run", "parent_repo", "submodule_path", "confirm", "plan_hash", "init_submodules", "prepare", "verify"},
     "worktree_complete": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo", "commit_title", "commit_body", "merge_strategy"},

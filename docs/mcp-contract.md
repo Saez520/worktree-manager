@@ -18,14 +18,30 @@ The `initialize` result carries `serverInfo.name "worktree-for-agents"` and
 an `instructions` field with the literal guide text:
 
 ```text
-You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
+Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying.
 ```
+
+Each operation carries its own description in `tools/list`:
+
+| Operation | Description |
+|---|---|
+| `worktree_create` | Creates an isolated worktree and its branch for a work identifier; use it before starting a change, spec, or flow so the base branch stays untouched. |
+| `worktree_complete` | Integrates the worktree into the base branch and removes it; use it when the isolated work is finished and should land on the base branch. |
+| `worktree_cleanup` | Removes the worktree and its branch without integrating; use it to discard abandoned work and, with discard and discard_consent, its uncommitted changes. |
+| `worktree_recover` | Continues a pending transaction by its identifier; use it after an interrupted create or complete before starting another operation. |
+| `worktree_list` | Lists the worktrees registered for the repository; use it to find existing work identifiers before creating or closing one. |
+| `worktree_prune` | Removes worktree records whose directories no longer exist; use it after deleting a worktree by hand to clean the stale registration. |
+| `worktree_status` | Reports one work item's worktree, journal transactions, and pending intervention; use it before completing or cleaning up to confirm the current state. |
 
 When installed from npm, the service is launched without a bin entry via:
 
 ```sh
 node <package>/mcp-server.mjs
 ```
+
+The included diagnostics registers the service in OpenCode and Claude Code with
+the same launch command; the per-environment registration steps are documented
+in [the installation guide](installation.md).
 
 A rejected call publishes the same nine-key envelope as an accepted one, with
 `result` set to `failure` or `pending_intervention` and `error` carrying

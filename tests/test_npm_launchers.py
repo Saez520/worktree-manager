@@ -11,7 +11,7 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 MCP_SERVER = PACKAGE_DIR / "mcp-server.mjs"
 CLI = PACKAGE_DIR / "worktree.mjs"
-GUIDE_LITERAL = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?"
+GUIDE_LITERAL = "Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying."
 
 
 def run_node(script, args=(), stdin_lines=(), env_extra=None):
@@ -38,6 +38,14 @@ def run_node(script, args=(), stdin_lines=(), env_extra=None):
 
 class NpmLauncherTests(unittest.TestCase):
     def test_mcp_handshake_lists_seven_tools(self):
+        """gap_ref: GD-05 (C1 launcher).
+
+        criterio: the npm launcher publishes D1 in the initialize handshake.
+        defecto: the launcher keeps the retired instruction while the source
+        module publishes the new one.
+        why_not_detected: GUIDE_LITERAL fixed the retired instruction.
+        comportamiento observable: the first response's instructions equals D1.
+        """
         code, stdout, stderr = run_node(
             MCP_SERVER,
             stdin_lines=[

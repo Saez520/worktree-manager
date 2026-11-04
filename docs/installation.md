@@ -1,8 +1,7 @@
 # Installation and usage of the worktree manager
 
-This guide explains how to install the manager as an npm package and how to use it
-on a test repository. Integration with a specific consumer
-is documented in the repository that integrates the manager.
+This guide explains how to install the manager as an npm package, register the
+MCP service in both supported environments, and use it on a test repository.
 
 The examples use `$HOME` because `--repo` requires an absolute path. `<package>`
 is the installed package path.
@@ -45,7 +44,60 @@ repository clone is for development only. There is no `pip install` and no
 dependencies to resolve: the manager uses only the Python standard
 library. Once installed, the manager works without a network.
 
-## 3. A test repository
+## 3. Register the MCP service
+
+Both environments launch the same service with Node and the absolute package
+path:
+
+```sh
+node <package>/mcp-server.mjs
+```
+
+### OpenCode
+
+Run the writer from anywhere:
+
+```sh
+node <package>/setup.mjs --write-opencode
+```
+
+The entry `mcp.worktree-for-agents` is written to the OpenCode configuration
+file that the diagnostics report (`~/.config/opencode/opencode.json` on Linux
+and macOS by default, or `$XDG_CONFIG_HOME/opencode/opencode.json` when that
+variable is set). The writer is idempotent: a second run confirms the entry and
+changes nothing. Before writing it copies the existing file to
+`opencode.json.bak`, and it refuses to overwrite a different value with exit
+code 1 without touching the file.
+
+### Claude Code
+
+Run the writer from the project root:
+
+```sh
+cd <project>
+node <package>/setup.mjs --write-claude
+```
+
+The entry `mcpServers.worktree-for-agents` is written to `<project>/.mcp.json`,
+the project configuration file that Claude Code reads. The writer is
+idempotent, copies an existing file to `.mcp.json.bak` before writing, and
+exits with code 1 without touching the file when the existing entry differs or
+the file is not valid JSON.
+
+### Check the registration
+
+From the project root:
+
+```sh
+node <package>/setup.mjs
+```
+
+The diagnostics report the package version and path, the Python interpreter,
+the launch command, the active installation, and each environment's
+configuration path with the entries that point to this package. Run it from the
+project root so the Claude Code entry of that project is included.
+
+## 4. A test repository
 
 The manager requires the worktree path to be ignored by Git, and
 `.worktrees/` in `.gitignore` satisfies that condition.
@@ -108,7 +160,7 @@ If `--title` is not passed, the manager uses the generic fallback:
 `Complete <work_id> (generic closure)` with the body
 `No delivery description was available at closure time.`.
 
-## 4. Configuration
+## 5. Configuration
 
 The configuration is a `key=value` file. The manager reads it from
 `.worktree-manager.conf` at the repository root, or from the file passed
@@ -137,7 +189,7 @@ Each key may appear only once. An unknown key, a line without
 `=`, an invalid boolean, or an unsafe path is rejected as
 `invalid_configuration` with exit code `3`, before any effect.
 
-## 5. Output contracts
+## 6. Output contracts
 
 - `--json` publishes a single JSON document with seven keys: `contract_version`,
   `tool_version`, `operation`, `result`, `data`, `warnings` and `error`.
@@ -148,8 +200,9 @@ Each key may appear only once. An unknown key, a line without
 - A dry run of `create` publishes `planned: true` and creates no worktree or branch.
   `init_submodules_result` is `planned` or `not_requested`, and `prepare` and
   `verify` are `planned` or `skipped`.
-- The MCP service is published over stdio and exposes seven tools. From the
-  installed package it is launched without bin:
+- The MCP service is published over stdio and exposes seven tools. Each
+  operation publishes its own description in `tools/list`. From the installed
+  package it is launched without bin:
 
 ```sh
 node <package>/mcp-server.mjs
@@ -158,7 +211,7 @@ node <package>/mcp-server.mjs
   `initialize` publishes the guide in `instructions`:
 
 ```text
-You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?
+Before you touch the main branch, offer to create an isolated worktree: create it with worktree_create, do all the work inside it, and close it with worktree_complete to integrate or worktree_cleanup to discard. If the worktree cannot be created or closed, correct the cause named in the error message before retrying.
 ```
 
   For development, the transport also starts from the checkout:
@@ -167,7 +220,7 @@ You are going to implement a change, run a spec, or start a flow. Do you want to
 PYTHONPATH=. python3 -m worktree_manager.mcp_transport
 ```
 
-## 6. Tests
+## 7. Tests
 
 ```sh
 bash tests/cli-usage.sh
@@ -178,18 +231,6 @@ bash tests/parity.sh
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_*.py'
 PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp*.py' -v
 ```
-
-## 7. Consumption as a submodule and coexistence
-
-A consumer repository may materialize the manager as a submodule. The
-rule is unique: the materialized checkout and the registered gitlink must be the
-same commit.
-
-The npm package `worktree-for-agents` is independent of the submodule: it ships
-the Python runtime and works without a network once installed. `node
-<package>/setup.mjs` diagnoses which installation is active when the
-npm package, the global FlowTask copy, and the local submodule coexist. The repository
-clone is for development only and no other distribution is promised.
 
 ## 8. Troubleshooting
 
@@ -202,12 +243,6 @@ clone is for development only and no other distribution is promised.
 - **The repository path is relative.** The operation is rejected with
   code `invalid_repository`, exit code `3`, and the message
   `Repository path must be absolute`.
-- **The Python version is older than 3.9.** The consumer installer reports
+- **The Python version is older than 3.9.** The package postinstall reports
   it as `python <version> is older than the required 3.9`. The entrypoint
   of this repository does not check the version.
-
-## 9. What it does not cover
-
-This guide does not cover integration with a consumer: neither the adapter, nor the
-bridge, nor gitlink validation, nor the consumer installation procedure.
-That is documented in the consumer repository.
