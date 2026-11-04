@@ -1,6 +1,6 @@
 {
   "name": "worktree-for-agents",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Standalone Git worktree manager with a stdio MCP service usable by any coding agent",
   "type": "module",
   "engines": {
