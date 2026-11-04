@@ -8,7 +8,7 @@ from .recovery_manager import RecoveryManager
 from .mcp_contract import validate_request, envelope
 from .worktree_lifecycle import validate_work_id
 from .target_direct_adapter import TargetDirectAdapter
-from .state_digest import state_digest, canonical_hash
+from .state_digest import complete_state_digest, state_digest, canonical_hash
 import hashlib
 import subprocess
 
@@ -30,18 +30,23 @@ def call(tool, request):
             req["base"] = req.get("base") or next((b for b in ("development", "main", "trunk") if lifecycle.git.run(("show-ref", "--verify", "--quiet", f"refs/heads/{b}"), check=False).returncode == 0), "main")
         if tool == "worktree_complete" and not req.get("transaction_id") and dry:
             req["transaction_id"] = __import__("uuid").uuid4().hex
-        fields = ["operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"]
+        fields = ["operation", "repo", "work_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"]
         if tool == "worktree_complete":
             fields = fields + ["commit_title", "commit_body", "merge_strategy"]
+        def current_digest():
+            if tool == "worktree_complete":
+                return complete_state_digest(root, lifecycle.state_root, req["base"], lifecycle._branch(req["work_id"]), lifecycle._path(req["work_id"]), req["work_id"])
+            return state_digest(root, lifecycle.state_root)
         def plan_for(digest):
-            return {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
+            return {key: (tool if key == "operation" else digest if key == "state_digest" else req.get(key)) for key in fields}
         if dry:
-            digest = state_digest(root, lifecycle.state_root)
+            digest = current_digest()
             req["_computed_plan_hash"] = canonical_hash(plan_for(digest))
         elif req.get("plan_hash"):
-            digest = state_digest(root, lifecycle.state_root)
+            digest = current_digest()
             if req["plan_hash"] != canonical_hash(plan_for(digest)):
-                raise ManagerError("plan_mismatch", "Repository state or request changed since preflight", 5)
+                bound = ", ".join(sorted(fields))
+                raise ManagerError("plan_mismatch", f"Repository state or request changed since preflight (bound: {bound})", 5)
     if "work_id" in req:
         validate_work_id(req["work_id"])
     def target_adapter(identity):

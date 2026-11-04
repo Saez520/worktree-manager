@@ -15,7 +15,7 @@ from worktree_manager.mcp_contract import output_schema
 class DirectTransportMatrix(unittest.TestCase):
     cases = (
         "happy", "operation", "repo", "work_id", "confirm_false",
-        "transaction_id", "plan_hash", "operation_repo", "transaction_hash",
+        "state_drift", "plan_hash", "operation_repo", "transaction_hash",
         "repo_work_id", "confirm_hash", "three_dimensions",
     )
     required = set(output_schema()["required"])
@@ -23,9 +23,9 @@ class DirectTransportMatrix(unittest.TestCase):
     def test_case_table_semantics(self):
         self.assertEqual(len(self.cases), 12)
         self.assertEqual(len(set(self.cases)), 12)
-        self.assertEqual(self.expected("transaction_id"), ("plan_mismatch", "Repository state or request changed since preflight"))
+        self.assertEqual(self.expected("state_drift"), ("plan_mismatch", "Repository state or request changed since preflight"))
         self.assertEqual(self.expected("confirm_false"), ("invalid_request", "authorization_mismatch"))
-        self.assertEqual(self.expected("transaction_hash"), self.expected("transaction_id"))
+        self.assertEqual(self.expected("transaction_hash"), self.expected("state_drift"))
         self.assertEqual(self.expected("confirm_hash"), self.expected("confirm_false"))
 
     def test_cli_mcp_ab_matrix(self):
@@ -102,7 +102,7 @@ class DirectTransportMatrix(unittest.TestCase):
         work_id = f"matrix-{transport}-{name}-{case}".replace("_", "-")
         tool = "worktree_create"
         setup_result = None
-        if case in {"transaction_id", "transaction_hash"}:
+        if case in {"state_drift", "transaction_hash"}:
             created = self.invoke(transport, mcp, "worktree_create", {
                 "repo": str(repo), "work_id": work_id, "base": "main"})
             setup_result = created
@@ -125,6 +125,8 @@ class DirectTransportMatrix(unittest.TestCase):
 
         pre = self.invoke(transport, mcp, tool, planned)
         pdata = pre.get("data", {})
+        if case == "state_drift":
+            git(repo, "commit", "--allow-empty", "-qm", "state drift")
         request = dict(planned)
         request["dry_run"] = False
         if "plan_hash" in pdata:
@@ -144,7 +146,7 @@ class DirectTransportMatrix(unittest.TestCase):
         if case in {"confirm_false", "confirm_hash"}:
             request["confirm"] = False
             if case == "confirm_hash": request["plan_hash"] = "0" * 64
-        if case in {"transaction_id", "transaction_hash"}:
+        if case == "transaction_hash":
             planned_tx = pre.get("transaction_id") or pdata.get("transaction_id")
             request["transaction_id"] = (planned_tx or "wt-" + work_id) + "-altered"
             if case == "transaction_hash": request["plan_hash"] = "0" * 64

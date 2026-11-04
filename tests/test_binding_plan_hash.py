@@ -33,12 +33,12 @@ class DurableBindingTests(unittest.TestCase):
             response = call("worktree_create", {"repo": str(root), "work_id": "feature", "base": "main", "dry_run": True})
             data = response["data"]
             expected = {"operation": "worktree_create", "repo": str(root.resolve()), "work_id": "feature",
-                        "confirm": False, "transaction_id": None, "base": "main", "preserve_dirty": None,
+                        "base": "main", "preserve_dirty": None,
                         "discard": None, "discard_consent": None, "target_direct": None,
                         "parent_repo": None, "submodule_path": None, "state_digest": data["state_digest"]}
             independent = hashlib.sha256(json.dumps(expected, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
             self.assertEqual(data["plan_hash"], independent)
-            self.assertEqual(set(expected), {"operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"})
+            self.assertEqual(set(expected), {"operation", "repo", "work_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"})
 
     def test_binding_written_before_dispatch(self):
         with tempfile.TemporaryDirectory() as d:
@@ -120,7 +120,7 @@ class CompletePlanHashTests(unittest.TestCase):
             plan = call("worktree_complete", request)["data"]
             self.assertEqual(plan["commit_subject"], "Titulo [feature]")
             self.assertEqual(plan["commit_body"], "Cuerpo")
-            execute = dict(request, dry_run=False, transaction_id=plan["transaction_id"], plan_hash=plan["plan_hash"])
+            execute = dict(request, dry_run=False, plan_hash=plan["plan_hash"])
             result = call("worktree_complete", execute)
             self.assertEqual(result["result"], "success")
             self.assertEqual(result["data"]["commit_subject"], "Titulo [feature]")
