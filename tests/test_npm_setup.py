@@ -1,4 +1,4 @@
-"""setup.mjs diagnostics, coexistence and opt-in OpenCode registration."""
+"""setup.mjs diagnostics and opt-in OpenCode registration."""
 import json
 import os
 import subprocess
@@ -8,14 +8,15 @@ from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 SETUP = PACKAGE_DIR / "setup.mjs"
+RETIRED_MARKERS = ("flow" + "task", "flow" + "task_worktree_consume")
 
 
-def run_setup(args=(), env_extra=None):
+def run_setup(args=(), env_extra=None, cwd=PACKAGE_DIR):
     env = dict(os.environ)
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        ["node", str(SETUP), *args], text=True, capture_output=True, cwd=str(PACKAGE_DIR), env=env
+        ["node", str(SETUP), *args], text=True, capture_output=True, cwd=str(cwd), env=env
     )
 
 
@@ -35,19 +36,45 @@ class NpmSetupTests(unittest.TestCase):
         self.assertEqual(status["version"], "1.1.0")
         self.assertTrue(any(i["kind"] == "npm package" and i["active"] for i in status["installations"]))
 
-    def test_coexistence_with_global_copy(self):
+    def test_diagnose_reports_only_npm_package(self):
+        """gap_ref: GD-03 (C5).
+
+        criterio: the diagnostic reports the active npm package, both
+        environments, and no retired consumer copy or path.
+        defecto: a diagnostic that still reports a global copy or a submodule.
+        why_not_detected: the obsolete test asserted coexistence with them.
+        comportamiento observable: exactly one installation, kind "npm package";
+        keys opencode and claude; and no retired marker in either output.
+        """
         with tempfile.TemporaryDirectory() as home:
-            manager = Path(home) / ".config" / "flowtask" / "worktree-manager" / "worktree_manager"
-            manager.mkdir(parents=True)
-            (manager / "__main__.py").write_text("# stub\n")
-            (manager / "mcp_transport.py").write_text("# stub\n")
+            retired = Path(home) / ".config" / ("flow" + "task") / "worktree-manager" / "worktree_manager"
+            retired.mkdir(parents=True)
+            (retired / "__main__.py").write_text("# stub\n")
+            (retired / "mcp_transport.py").write_text("# stub\n")
+            project = Path(home) / "project"
+            project.mkdir()
             env = {"HOME": home, "XDG_CONFIG_HOME": str(Path(home) / ".config")}
-            result = run_setup(("--json",), env_extra=env)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            status = json.loads(result.stdout)
-            kinds = {i["kind"]: i for i in status["installations"]}
-            self.assertTrue(kinds["FlowTask global copy"]["present"])
-            self.assertTrue(kinds["npm package"]["active"])
+
+            document = run_setup(("--json",), env_extra=env, cwd=project)
+            self.assertEqual(document.returncode, 0, document.stderr)
+            status = json.loads(document.stdout)
+            self.assertEqual([item["kind"] for item in status["installations"]], ["npm package"])
+            self.assertTrue(status["installations"][0]["active"])
+            self.assertEqual(status["active"], "npm package")
+            self.assertEqual(set(status["environments"]), {"opencode", "claude"})
+            self.assertEqual(status["launch"], ["node", str(PACKAGE_DIR / "mcp-server.mjs")])
+            for environment in status["environments"].values():
+                self.assertIn("refsThisPackage", environment)
+
+            human = run_setup((), env_extra=env, cwd=project)
+            self.assertEqual(human.returncode, 0, human.stderr)
+            self.assertIn("npm package", human.stdout)
+            self.assertIn("opencode config", human.stdout)
+            self.assertIn("claude code config", human.stdout)
+
+            output = (document.stdout + human.stdout).lower()
+            for marker in RETIRED_MARKERS:
+                self.assertNotIn(marker, output)
 
     def test_write_opencode_is_idempotent(self):
         with tempfile.TemporaryDirectory() as home:
