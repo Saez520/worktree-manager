@@ -6,6 +6,7 @@ from .models import ManagerError, ResultKind
 from .transaction_journal import TransactionJournal
 from .git_repository import GitRepository
 from .lock_manager import LockManager
+from .worktree_lifecycle import MERGE_STRATEGIES
 import hashlib
 class RecoveryManager:
     def __init__(self,state_root: str|Path,repo_root: str|Path|None=None): self.journal=TransactionJournal(state_root); self.repo=GitRepository(repo_root) if repo_root else None
@@ -61,6 +62,8 @@ class RecoveryManager:
             try: meta=json.loads((self.journal.directory(transaction_id)/'meta.json').read_text(encoding='utf-8'))
             except (OSError,ValueError) as exc: raise ManagerError('invalid_journal','Recovery metadata is corrupt; backups were retained',5) from exc
             if meta.get('base') is None or meta.get('branch') is None or meta.get('path') is None: raise ManagerError('invalid_journal','Transaction identity is incomplete',5)
+            merge_strategy=meta.get('merge_strategy','squash')
+            if merge_strategy not in MERGE_STRATEGIES: raise ManagerError('invalid_journal','Transaction merge strategy is not recognised; resources retained',5)
             # Preserve-dirty captures are a separate recovery contract from a
             # durable squash. A crash can leave captured parent state that
             # must not be silently classified as a completed close, regardless
@@ -78,13 +81,16 @@ class RecoveryManager:
                 branch_tip=self.repo.run(('rev-parse',f'refs/heads/{branch}'),check=False)
                 parents=self.repo.run(('rev-list','--parents','-n','1',head),check=False).stdout.split()
                 registered_paths={str(Path(item).resolve()) for item in registered}
+                expected_parents=3 if merge_strategy=='preserve-history' else 2
+                valid_parents=len(parents)==expected_parents and parents[0]==head and parents[1]==before
+                if merge_strategy=='preserve-history' and valid_parents: valid_parents=parents[2]==meta.get('origin')
                 if (base_tip.returncode or base_tip.stdout.strip()!=head or
                     str(path.resolve()) not in registered_paths or
                     worktree_head.returncode or worktree_head.stdout.strip()!=meta.get('origin') or
                     symbolic.returncode or symbolic.stdout.strip()!=f'refs/heads/{branch}' or
                     branch_tip.returncode or branch_tip.stdout.strip()!=meta.get('origin') or
-                    len(parents)!=2 or parents[0]!=head or parents[1]!=before):
-                    raise ManagerError('intervention_required','Durable squash evidence is incomplete or ambiguous; resources retained',5)
+                    not valid_parents):
+                    raise ManagerError('intervention_required','Durable integration evidence is incomplete or ambiguous; resources retained',5)
                 return ResultKind.NO_PENDING_WORK, None
             if phase in {'captured','merge_started'} and head==before:
                 # The squash commit did not happen. Restore captured destination state once.
@@ -94,8 +100,8 @@ class RecoveryManager:
                     lifecycle._restore_saved(transaction_id,meta)
                 self.journal.write_phase(transaction_id,'restored')
                 return ResultKind.SUCCESS,{'transaction_id':transaction_id,'phase':'restored','integrated':False}
-            squash=meta.get('squash')
-            if phase in {'merged','remove_started','removed'} and (not squash or head!=squash): raise ManagerError('intervention_required','Repository HEAD drifted from the recorded squash commit; resources retained',5)
+            integrated=meta.get('integrated') or meta.get('squash')
+            if phase in {'merged','remove_started','removed'} and (not integrated or head!=integrated): raise ManagerError('intervention_required','Repository HEAD drifted from the recorded integrated commit; resources retained',5)
             if path.exists() or str(path) in registered:
                 if phase not in {'merged','remove_started'}: raise ManagerError('intervention_required','Worktree state is ambiguous; resources retained',5)
                 if self.repo.run(('-C',str(path),'status','--porcelain')).stdout: raise ManagerError('intervention_required','Worktree is dirty; resources retained',5)
