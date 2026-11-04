@@ -1,6 +1,6 @@
 # CLI output contract
 
-The default presentation is human-readable. `--json` explicitly selects one JSON document on stdout; diagnostics remain on stderr. JSON objects contain `contract_version` (integer, currently `1`), `tool_version` (string, currently `1.0.0`), `operation`, `result`, `data`, `warnings`, and `error`. `data` is an object whose fields depend on the operation and result; examples include `path`, `branch`, `worktree`, `pruned`, and `recovered`. There is no general `data.output` field: the dispatcher’s human-readable text is not included in the JSON data object.
+The default presentation is human-readable. `--json` explicitly selects one JSON document on stdout; diagnostics remain on stderr. JSON objects contain `contract_version` (integer, currently `1`), `tool_version` (string, currently `1.1.0`), `operation`, `result`, `data`, `warnings`, and `error`. `data` is an object whose fields depend on the operation and result; examples include `path`, `branch`, `worktree`, `pruned`, and `recovered`. There is no general `data.output` field: the dispatcher’s human-readable text is not included in the JSON data object.
 
 `result` is `success`, `failure`, `pending_intervention`, or `no_pending_work`. Errors are objects with stable `code`, human `message`, and public `exit_code`. Exit codes are 0 success/no pending work, 2 usage, 3 invalid configuration/identity, 4 resource lock, 5 conflict/intervention, and 6 access/dependency. The legacy entrypoint and its codes remain unchanged when `--json` is absent. Errors whose legacy text does not provide a reliable subtype are reported as `operation_failed` (exit 5); clients should rely on the stable code, not parse the message.
 
@@ -49,3 +49,28 @@ title is passed, the subject is `Complete <work_id> (generic closure)` and the b
 written when non-empty. Both values are stored in `meta.json` as
 `commit_subject` and `commit_body`, and the dry run publishes them. A
 title or body change between preflight and execute causes `plan_mismatch`.
+
+## Merge strategy
+
+`complete` accepts `--merge-strategy` with the values `squash` (default) and
+`preserve-history`. Squash integrates the branch as one new commit on the base
+branch and keeps the existing verification. Preserve-history integrates it with
+an explicit merge commit (`git merge --no-ff`) whose first parent is the base
+position before completion and whose second parent is the branch tip, so the
+branch commits remain reachable. Neither strategy uses a fast-forward.
+
+The result publishes `merge_strategy` and `integrated_commit` in both cases;
+`squash_commit` is published only for squash and equals `integrated_commit`.
+The transaction `meta.json` records `merge_strategy` and `integrated` (plus
+`squash` for squash), and `binding.json` records `merge_strategy`. Recovery
+validates the parent shape recorded by the strategy; a transaction without a
+recorded strategy is read as squash, and an unknown value is reported as
+`invalid_journal` with exit code 5 while retaining the evidence.
+
+An invalid `--merge-strategy` value is rejected by the parser with
+`usage_error` and exit code 2 before any mutation. With `preserve-history`,
+a branch with no commits ahead of the base is rejected as `operation_failed`
+with exit code 5 before the transaction journal or locks are created, so the
+worktree and branch are retained. A destination with uncommitted changes keeps
+requiring `--preserve-dirty`, which captures and restores the destination state
+around either strategy.

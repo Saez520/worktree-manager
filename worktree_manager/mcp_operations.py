@@ -32,7 +32,7 @@ def call(tool, request):
             req["transaction_id"] = __import__("uuid").uuid4().hex
         fields = ["operation", "repo", "work_id", "confirm", "transaction_id", "base", "preserve_dirty", "discard", "discard_consent", "target_direct", "parent_repo", "submodule_path", "state_digest"]
         if tool == "worktree_complete":
-            fields = fields + ["commit_title", "commit_body"]
+            fields = fields + ["commit_title", "commit_body", "merge_strategy"]
         def plan_for(digest):
             return {key: (tool if key == "operation" else digest if key == "state_digest" else bool(req.get("authorization")) if key == "confirm" else req.get(key)) for key in fields}
         if dry:
@@ -117,8 +117,9 @@ def call(tool, request):
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
             from .commit_message import compose_commit_message
             _subject, _body = compose_commit_message(req["work_id"], req.get("commit_title"), req.get("commit_body"))
-            data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "mutations": ["squash_merge", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest, "commit_subject": _subject, "commit_body": _body}
-        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"), req.get("plan_hash"), req)
+            strategy = req.get("merge_strategy", "squash")
+            data = {"planned": True, "work_id": req["work_id"], "transaction_id":req.get("transaction_id"), "preflight": "passed", "merge_strategy": strategy, "mutations": ["squash_merge" if strategy == "squash" else "merge_no_ff", "remove_worktree", "delete_branch"], "plan_hash":req.get("_computed_plan_hash"), "state_digest":digest, "commit_subject": _subject, "commit_body": _body}
+        else: data = lifecycle.complete(req["work_id"], req.get("base", "main"), req.get("preserve_dirty", False), req.get("transaction_id"), req.get("plan_hash"), req, merge_strategy=req.get("merge_strategy", "squash"))
     elif tool == "worktree_cleanup":
         if req.get("discard") and req.get("discard_consent") is not True:
             raise ManagerError("discard_consent_required", "Separate explicit discard consent is required", 3)

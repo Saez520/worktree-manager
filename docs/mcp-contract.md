@@ -76,3 +76,26 @@ The dry run publishes the composed `commit_subject` and `commit_body`; execute p
 to the lifecycle. If missing, the manager uses the neutral fallback
 `Complete <work_id> (generic closure)` / `No delivery description was available
 at closure time.`.
+
+## Merge strategy
+
+`worktree_complete` accepts the optional string `merge_strategy` with the enum
+values `squash` (default) and `preserve-history`. Squash integrates the branch
+as one commit; preserve-history records an explicit merge commit that keeps the
+branch commits. Neither strategy uses a fast-forward.
+
+The field is validated as a string and against the enum before any mutation; a
+value outside the enum is rejected as `invalid_request` with exit code 3. It is
+included in the plan hash only for `worktree_complete`, so a preflight for one
+strategy cannot execute the other and reports `plan_mismatch` with exit code 5.
+
+A dry run publishes `data.merge_strategy` and the planned `mutations`:
+`squash_merge` for squash, or `merge_no_ff` for preserve-history, followed by
+`remove_worktree` and `delete_branch` in both cases. Execute returns
+`merge_strategy` and `integrated_commit`; `squash_commit` is present only for
+squash and equals `integrated_commit`. The transaction records the strategy and
+the integrated commit. Recovery validates the parent shape recorded by the
+strategy, reads a transaction without the field as squash, and reports an
+unknown value as `invalid_journal` with exit code 5 while retaining evidence.
+With `preserve-history`, a branch with no commits ahead of the base fails as
+`operation_failed` with exit code 5 without a transaction or mutation.

@@ -21,6 +21,13 @@ def validate_work_id(value: str) -> str:
         raise ManagerError('invalid_identity','Invalid work identifier',3)
     return value
 
+MERGE_STRATEGIES = ('squash', 'preserve-history')
+DEFAULT_MERGE_STRATEGY = 'squash'
+def validate_merge_strategy(value: str) -> str:
+    if value not in MERGE_STRATEGIES:
+        raise ManagerError('invalid_merge_strategy','Invalid merge strategy',3)
+    return value
+
 class WorktreeLifecycle:
     def __init__(self, config: Configuration):
         self.config=config
@@ -132,15 +139,18 @@ class WorktreeLifecycle:
             self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
             self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
-    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None,commit_title=None,commit_body=None)->dict[str,str]:
-        """Squash a worktree branch and retire it only after verified success.
+    def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None,commit_title=None,commit_body=None,merge_strategy: str|None=None)->dict[str,str]:
+        """Integrate a worktree branch and retire it only after verified success.
 
-        Dirty-destination preservation is intentionally rejected until its capture
-        and restoration protocol is available; it must never silently discard data.
+        Squash produces one commit on the base branch. Preserve-history records
+        an explicit merge commit that keeps the branch commits. Dirty-destination
+        state is captured and restored around the integration in both strategies.
         """
         branch=self._branch(work_id); base=self._base(base); path=self._path(work_id)
         if commit_title is None and isinstance(request,dict): commit_title=request.get('commit_title')
         if commit_body is None and isinstance(request,dict): commit_body=request.get('commit_body')
+        if merge_strategy is None and isinstance(request,dict): merge_strategy=request.get('merge_strategy')
+        merge_strategy=validate_merge_strategy(merge_strategy or DEFAULT_MERGE_STRATEGY)
         registered={item['path'] for item in self.list()}
         if str(path) not in registered or not path.is_dir():
             raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
@@ -153,6 +163,12 @@ class WorktreeLifecycle:
         status=self.git.run(('status','--porcelain','--untracked-files=all')).stdout
         if status and not preserve_dirty:
             raise ManagerError('intervention_required','Destination has uncommitted changes; use --preserve-dirty to retain them',5)
+        if merge_strategy=='preserve-history':
+            ahead=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False)
+            if ahead.returncode:
+                raise ManagerError('operation_failed','Could not inspect the branch ahead of the base; nothing was merged',5)
+            if (ahead.stdout.strip() or '0')=='0':
+                raise ManagerError('operation_failed','Branch has no commits ahead of the base; nothing was merged',5)
         state=self.state_root
         locks=LockManager(state/self.config.lock_dir)
         tx=transaction_id or uuid.uuid4().hex
@@ -161,7 +177,7 @@ class WorktreeLifecycle:
             raise ManagerError('intervention_required','Transaction binding already exists; execute is blocked',5)
         before=self.git.head(); origin=self.git.run(('rev-parse',f'refs/heads/{branch}')).stdout.strip()
         meta={'work_id':work_id,'base':base,'branch':branch,'path':str(path),'before':before,'origin':origin,
-              'preserve_dirty':bool(status),'tracked_ref':None,'untracked_ref':None,
+              'preserve_dirty':bool(status),'merge_strategy':merge_strategy,'tracked_ref':None,'untracked_ref':None,
               'backup_ref_prefix':self.config.backup_ref_prefix}
         meta_path=journal.directory(tx)/'meta.json'
         def save_meta(phase):
@@ -182,6 +198,7 @@ class WorktreeLifecycle:
             try:
                 journal.write_binding(tx, {'transaction_id':tx,'repo':str(self.config.repo_root.resolve()),'work_id':work_id,
                     'operation':'worktree_complete','request':request or {},'plan_hash':plan_hash,
+                    'merge_strategy':merge_strategy,
                     'state_digest':__import__('worktree_manager.state_digest',fromlist=['state_digest']).state_digest(self.config.repo_root,state),
                     'created_at':__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
                     'phase':'prepared','base':base,'before':before,'origin':origin})
@@ -215,19 +232,33 @@ class WorktreeLifecycle:
                 meta['commit_subject']=subject
                 meta['commit_body']=body
                 save_meta('merge_started')
-                merged=self.git.run(('merge','--squash',branch),check=False)
-                if merged.returncode or self.git.run(('diff','--cached','--quiet'),check=False).returncode==0:
-                    self.git.run(('reset','--merge'),check=False)
-                    save_meta('pending_manual')
-                    raise ManagerError('operation_failed','Squash merge failed or produced no changes; worktree and branch retained',5)
-                commit_args=['commit','-m',subject]
-                if body:
-                    commit_args += ['-m',body]
-                self.git.run(tuple(commit_args))
-                after=self.git.head()
-                if after==before or len(self.git.run(('rev-list','--parents','-n','1',after)).stdout.split())!=2:
-                    save_meta('pending_manual'); raise ManagerError('operation_failed','Squash commit verification failed; resources retained',5)
-                meta['squash']=after; save_meta('merged')
+                if merge_strategy=='preserve-history':
+                    message=subject+('\n\n'+body if body else '')
+                    merged=self.git.run(('merge','--no-ff','-m',message,branch),check=False)
+                    if merged.returncode:
+                        self.git.run(('merge','--abort'),check=False)
+                        save_meta('pending_manual')
+                        raise ManagerError('operation_failed','Preserve-history merge failed; worktree and branch retained',5)
+                    after=self.git.head()
+                    parents=self.git.run(('rev-list','--parents','-n','1',after)).stdout.split()
+                    if after==before or len(parents)!=3 or parents[0]!=after or parents[1]!=before or parents[2]!=origin:
+                        save_meta('pending_manual'); raise ManagerError('operation_failed','Merge commit verification failed; resources retained',5)
+                else:
+                    merged=self.git.run(('merge','--squash',branch),check=False)
+                    if merged.returncode or self.git.run(('diff','--cached','--quiet'),check=False).returncode==0:
+                        self.git.run(('reset','--merge'),check=False)
+                        save_meta('pending_manual')
+                        raise ManagerError('operation_failed','Squash merge failed or produced no changes; worktree and branch retained',5)
+                    commit_args=['commit','-m',subject]
+                    if body:
+                        commit_args += ['-m',body]
+                    self.git.run(tuple(commit_args))
+                    after=self.git.head()
+                    if after==before or len(self.git.run(('rev-list','--parents','-n','1',after)).stdout.split())!=2:
+                        save_meta('pending_manual'); raise ManagerError('operation_failed','Squash commit verification failed; resources retained',5)
+                meta['integrated']=after
+                if merge_strategy=='squash': meta['squash']=after
+                save_meta('merged')
                 self.git.run(('worktree','remove','--force','--',str(path)))
                 if path.exists() or str(path) in {item['path'] for item in self.list()}:
                     save_meta('pending_manual'); raise ManagerError('operation_failed','Worktree removal could not be verified',5)
@@ -236,10 +267,16 @@ class WorktreeLifecycle:
                     save_meta('pending_manual'); raise ManagerError('operation_failed','Branch changed; it was retained',5)
                 self.git.run(('update-ref','-d',f'refs/heads/{branch}',origin)); save_meta('closed')
                 if status:
-                    meta['squash']=after; save_meta('merged')
+                    meta['integrated']=after
+                    if merge_strategy=='squash': meta['squash']=after
+                    save_meta('merged')
                     self._restore_saved(tx,meta)
                     save_meta('restored')
-                return {'completed':work_id,'branch':branch,'base_branch':base,'worktree':str(path),'squash_commit':after,'transaction_id':tx,'commit_subject':subject,'commit_body':body}
+                result={'completed':work_id,'branch':branch,'base_branch':base,'worktree':str(path),
+                        'integrated_commit':after,'merge_strategy':merge_strategy,
+                        'transaction_id':tx,'commit_subject':subject,'commit_body':body}
+                if merge_strategy=='squash': result['squash_commit']=after
+                return result
             finally: locks.release()
 
     def _restore_saved(self,tx,meta):

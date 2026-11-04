@@ -150,6 +150,85 @@ class McpE2ETests(unittest.TestCase):
         self.assertIn("Entrega: prueba. Motivo: verificacion.", log)
         self.assertFalse((self.repo / ".worktrees/feature").exists())
 
+    def test_preserve_history_creates_two_parent_merge_without_fast_forward(self):
+        """gap_ref: C2 (preserve-history).
+
+        criterio: preserve-history integra la rama con un commit de dos padres
+        [base antes, punta de rama], sin avance rapido, y retira el area y la
+        rama solo tras verificar el exito.
+        defecto: un avance rapido o padres invertidos no se detecta en CI.
+        why_not_detected: el plan declaraba una comprobacion manual; no habia
+        caso automatizado de preserve-history.
+        comportamiento observable: rev-list --parents -n 1 HEAD devuelve tres
+        tokens con [1]=before y [2]=origin, y el area y la ref ya no existen.
+        """
+        created, error = self.call("worktree_create", work_id="preserve", base="main")
+        self.assertFalse(error, created)
+        wt = self.repo / ".worktrees/preserve"
+        for index in (1, 2):
+            (wt / f"change-{index}.txt").write_text(f"change {index}\n")
+            git(wt, "add", f"change-{index}.txt")
+            git(wt, "commit", "-qm", f"feature {index}")
+        before = git(self.repo, "rev-parse", "HEAD")
+        origin = git(self.repo, "rev-parse", "refs/heads/worktree/preserve")
+
+        result, error = self.call("worktree_complete", work_id="preserve", base="main",
+                                  merge_strategy="preserve-history",
+                                  authorization="I_AUTHORIZE_THIS_CALL")
+
+        self.assertFalse(error, result)
+        self.assertEqual(result["result"], "success")
+        self.assertEqual(result["data"]["merge_strategy"], "preserve-history")
+        self.assertNotIn("squash_commit", result["data"])
+        integrated = result["data"]["integrated_commit"]
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), integrated)
+        parents = git(self.repo, "rev-list", "--parents", "-n", "1", "HEAD").split()
+        self.assertEqual(parents, [integrated, before, origin])
+        self.assertEqual(len(parents), 3)
+        self.assertFalse((self.repo / ".worktrees/preserve").exists())
+        self.assertNotEqual(subprocess.run(
+            ["git", "-C", str(self.repo), "show-ref", "--verify", "--quiet",
+             "refs/heads/worktree/preserve"]).returncode, 0)
+
+    def test_preserve_history_applies_composed_message_with_and_without_title(self):
+        """gap_ref: C3b (mensaje del commit de preserve-history).
+
+        criterio: el mensaje del commit de integracion sigue la regla
+        deterministica de asunto y cuerpo, con titulo y con la reserva neutra.
+        defecto: una regresion en la construccion del mensaje del merge.
+        why_not_detected: el plan declaraba una comprobacion manual del mensaje
+        aplicado al commit, no de la funcion unitaria.
+        comportamiento observable: git log -1 --format=%s%n%b del commit de
+        integracion coincide con el asunto y cuerpo compuestos en cada caso.
+        """
+        cases = (
+            ("message-titled", "Cierre de prueba", "Entrega: prueba. Motivo: verificacion.",
+             "Cierre de prueba [message-titled]", "Entrega: prueba. Motivo: verificacion."),
+            ("message-default", None, None,
+             "Complete message-default (generic closure)",
+             "No delivery description was available at closure time."),
+        )
+        for work_id, title, body, subject, expected_body in cases:
+            with self.subTest(work_id=work_id):
+                created, error = self.call("worktree_create", work_id=work_id, base="main")
+                self.assertFalse(error, created)
+                wt = self.repo / ".worktrees" / work_id
+                (wt / f"{work_id}.txt").write_text(f"{work_id}\n")
+                git(wt, "add", f"{work_id}.txt")
+                git(wt, "commit", "-qm", f"change for {work_id}")
+                arguments = {"work_id": work_id, "base": "main",
+                             "merge_strategy": "preserve-history",
+                             "authorization": "I_AUTHORIZE_THIS_CALL"}
+                if title is not None:
+                    arguments["commit_title"] = title
+                    arguments["commit_body"] = body
+                result, error = self.call("worktree_complete", **arguments)
+                self.assertFalse(error, result)
+                self.assertEqual(result["data"]["commit_subject"], subject)
+                self.assertEqual(result["data"]["commit_body"], expected_body)
+                log = git(self.repo, "log", "-1", "--format=%s%n%b")
+                self.assertEqual(log, f"{subject}\n{expected_body}")
+
     def test_prune_dry_run_reports_no_work_without_mutation(self):
         before = state(self.repo)
         result, error = self.call("worktree_prune", dry_run=True)

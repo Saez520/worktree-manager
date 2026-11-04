@@ -6,7 +6,7 @@ from .configuration import Configuration
 from .git_repository import GitRepository
 from .models import ManagerError,OperationResult,ResultKind
 from .output import emit
-from .worktree_lifecycle import WorktreeLifecycle
+from .worktree_lifecycle import WorktreeLifecycle, MERGE_STRATEGIES, DEFAULT_MERGE_STRATEGY
 from .recovery_manager import RecoveryManager
 from .target_direct_adapter import TargetDirectAdapter
 from . import __version__ as VERSION
@@ -18,7 +18,7 @@ def _parser():
     for name in ('create','complete','cleanup'):
         p=sub.add_parser(name); p.add_argument('work_id'); p.add_argument('--base');
         if name=='cleanup': p.add_argument('--discard',action='store_true')
-        if name=='complete': p.add_argument('--preserve-dirty',action='store_true'); p.add_argument('--title'); p.add_argument('--body')
+        if name=='complete': p.add_argument('--preserve-dirty',action='store_true'); p.add_argument('--title'); p.add_argument('--body'); p.add_argument('--merge-strategy',choices=MERGE_STRATEGIES,default=DEFAULT_MERGE_STRATEGY)
         if name=='create':
             p.add_argument('--init-submodules',action='store_true'); p.add_argument('--prepare',action='store_true'); p.add_argument('--verify',action='store_true')
     p=sub.add_parser('recover'); p.add_argument('transaction_id',nargs='?')
@@ -120,7 +120,7 @@ def main(argv=None)->int:
                 result=OperationResult(operation,data=data)
             elif operation=='cleanup': result=OperationResult(operation,data=lifecycle.cleanup(args.work_id,args.discard,args.base or 'main'))
             elif operation=='complete':
-                data=lifecycle.complete(args.work_id,args.base or 'main',args.preserve_dirty,commit_title=args.title,commit_body=args.body)
+                data=lifecycle.complete(args.work_id,args.base or 'main',args.preserve_dirty,commit_title=args.title,commit_body=args.body,merge_strategy=args.merge_strategy)
                 data['merge']='success'
                 result=OperationResult(operation,data=data)
         if operation=='list' and not args.json:
