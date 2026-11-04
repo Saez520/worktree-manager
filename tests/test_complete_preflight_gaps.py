@@ -1,6 +1,6 @@
 """Contract tests for the two-step preflight/execute flow of ``worktree_complete``.
 
-Gap coverage (plan hotfix/hf-mcp-plan-mismatch/artifact/plan):
+Gap coverage:
 
 - G1 / C1: dry run without ``authorization`` followed by an authorized execute
   must complete. Defect: a client that follows the documented flow stays in
