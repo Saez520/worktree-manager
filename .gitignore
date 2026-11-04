@@ -1,0 +1,8 @@
+# Graphify outputs and local state
+graphify-out/
+.opencode/
+.worktrees/
+.release/
+__pycache__/
+*.pyc
+.DS_Store
