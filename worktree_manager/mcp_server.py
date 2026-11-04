@@ -2,11 +2,9 @@
 import json
 import sys
 from . import __version__
-from .mcp_contract import TOOL_NAMES, absolute_repository, error_envelope
+from .mcp_contract import MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS, TOOL_NAMES, absolute_repository, error_envelope
 from .mcp_operations import call
 from .models import ManagerError
-
-MCP_INSTRUCTIONS = "You are going to implement a change, run a spec, or start a flow. Do you want to create a worktree to work in isolation?"
 
 def schemas():
     from .mcp_contract import FIELDS, REQUIRED, output_schema
@@ -21,7 +19,7 @@ def schemas():
              "merge_strategy": {"type": "string", "enum": ["squash", "preserve-history"]}}
     props.update({"parent_repo": {"type": "string"}, "submodule_path": {"type": "string"},
                   "target_direct": {"type": "boolean"}})
-    return [{"name": name, "description": "Manage repository worktrees", "inputSchema": {
+    return [{"name": name, "description": TOOL_DESCRIPTIONS[name], "inputSchema": {
         "type": "object", "properties": {key: props[key] for key in sorted(FIELDS[name])},
         "required": sorted(REQUIRED[name]), "additionalProperties": False}, "outputSchema": output_schema()} for name in TOOL_NAMES]
 
