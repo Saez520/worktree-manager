@@ -17,7 +17,8 @@ def schemas():
               "init_submodules":{"type":"boolean"}, "prepare":{"type":"boolean"}, "verify":{"type":"boolean"},
              "dry_run": {"type": "boolean"}, "discard": {"type": "boolean"},
              "discard_consent": {"type": "boolean"}, "preserve_dirty": {"type": "boolean"},
-             "commit_title": {"type": "string"}, "commit_body": {"type": "string"}}
+             "commit_title": {"type": "string"}, "commit_body": {"type": "string"},
+             "merge_strategy": {"type": "string", "enum": ["squash", "preserve-history"]}}
     props.update({"parent_repo": {"type": "string"}, "submodule_path": {"type": "string"},
                   "target_direct": {"type": "boolean"}})
     return [{"name": name, "description": "Manage repository worktrees", "inputSchema": {

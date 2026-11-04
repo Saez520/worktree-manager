@@ -5,13 +5,14 @@ import pathlib
 
 CONTRACT_VERSION = 1
 from . import __version__ as TOOL_VERSION
+from .worktree_lifecycle import MERGE_STRATEGIES
 TOOL_NAMES = (
     "worktree_create", "worktree_complete", "worktree_cleanup",
     "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
 )
 FIELDS = {
     "worktree_create": {"repo", "work_id", "base", "dry_run", "parent_repo", "submodule_path", "confirm", "plan_hash", "init_submodules", "prepare", "verify"},
-    "worktree_complete": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo", "commit_title", "commit_body"},
+    "worktree_complete": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo", "commit_title", "commit_body", "merge_strategy"},
     "worktree_cleanup": {"repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "discard", "discard_consent"},
     "worktree_recover": {"repo", "transaction_id", "dry_run", "authorization", "confirm", "target_direct", "parent_repo"},
     "worktree_list": {"repo"}, "worktree_prune": {"repo", "dry_run", "authorization", "confirm", "plan_hash"},
@@ -40,9 +41,11 @@ def validate_request(tool: str, request: dict) -> dict:
     for key in ("dry_run", "discard", "preserve_dirty", "discard_consent", "target_direct", "confirm", "init_submodules", "prepare", "verify"):
         if key in request and type(request[key]) is not bool:
             raise ValueError(f"{key}_must_be_boolean")
-    for key in ("work_id", "base", "transaction_id", "authorization", "parent_repo", "submodule_path", "commit_title", "commit_body"):
+    for key in ("work_id", "base", "transaction_id", "authorization", "parent_repo", "submodule_path", "commit_title", "commit_body", "merge_strategy"):
         if key in request and not isinstance(request[key], str):
             raise ValueError(f"{key}_must_be_string")
+    if tool == "worktree_complete" and "merge_strategy" in request and request["merge_strategy"] not in MERGE_STRATEGIES:
+        raise ValueError("merge_strategy_invalid")
     if tool in {"worktree_create", "worktree_complete", "worktree_cleanup", "worktree_status"} and not request.get("work_id"):
         raise ValueError("work_id_required")
     if tool == "worktree_create" and bool(request.get("parent_repo")) != bool(request.get("submodule_path")):
