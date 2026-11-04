@@ -66,6 +66,26 @@ requested. Authorization is not retained across requests. Do not expose this
 local service to untrusted clients. CLI JSON v1 and its entrypoint remain
 unchanged.
 
+## Preflight and execution
+
+An execution may send `plan_hash`, the value that a dry run of the same
+operation published in `data.plan_hash`. The execute sends the same intent
+fields as its preflight plus that hash; a changed intent or repository state is
+rejected as `plan_mismatch` with exit code 5 before any mutation.
+`authorization` and `transaction_id` are not part of the plan: authorization is
+a per-call permit and the transaction identifier binds one execution, so a dry
+run made without authorization can be executed with it, and an execute may omit
+the identifier the dry run published. A `plan_mismatch` message names the fields
+covered by the plan in a trailing `(bound: ...)` list.
+
+For `worktree_create`, `worktree_cleanup` and `worktree_prune` the plan binds the
+request to the canonical digest of the repository state. For
+`worktree_complete` the digest is scoped to that closure: the commits of the base
+and of the worktree branch, the worktree HEAD and status, the main index, and
+the transactions that declare the same work identifier. Unrelated refs or
+worktrees do not invalidate a `worktree_complete` preflight, while a commit on
+the base after the preflight still does.
+
 ## End-to-end verification
 
 Run the real stdio client tests from the repository root:

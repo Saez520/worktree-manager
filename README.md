@@ -147,7 +147,7 @@ The package is organized in modules with one responsibility each:
 | `worktree_manager.transaction_journal` | Durable transaction and link journal. |
 | `worktree_manager.backup_store` | Retained backup references. |
 | `worktree_manager.lock_manager` | Mutual exclusion between processes. |
-| `worktree_manager.state_digest` | Canonical digest of the repository state and of a plan. |
+| `worktree_manager.state_digest` | Canonical digest of the repository state, the closure state of one worktree, and a plan. |
 | `worktree_manager.mcp_server` | MCP service published over stdio. |
 | `worktree_manager.mcp_contract` | Strict versioned request and envelope contracts. |
 | `worktree_manager.mcp_operations` | Facade over the lifecycle and recovery services. |
