@@ -41,7 +41,7 @@ class NpmPackageTests(unittest.TestCase):
     def test_manifest_fields(self):
         manifest = json.loads((PACKAGE_DIR / "package.json").read_text())
         self.assertEqual(manifest["name"], "worktree-for-agents")
-        self.assertEqual(manifest["version"], "1.2.0")
+        self.assertEqual(manifest["version"], "1.2.1")
         self.assertNotIn("bin", manifest)
         self.assertNotIn("license", manifest)
         self.assertEqual(manifest.get("type"), "module")
