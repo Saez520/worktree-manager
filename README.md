@@ -59,6 +59,13 @@ worktree.sh [globals] prune
 worktree.sh [globals] list
 ```
 
+`create --init-submodules` initializes the declared submodules inside the new
+worktree. It also fingerprints the module directories that already exist in the
+main worktree: one that is already incomplete rejects the request before the
+worktree exists, and one that changes or disappears during initialization fails
+the request with the affected paths and retains the worktree and its branch. The
+check never restores or deletes module directories.
+
 Target-direct operates on the repository given in `--repo` and does not create a
 parent worktree nor modify its `HEAD`. Its syntax places `--parent-repo`
 after the action and requires `--submodule-path` in `create`:

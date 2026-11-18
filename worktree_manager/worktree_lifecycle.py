@@ -69,17 +69,29 @@ class WorktreeLifecycle:
                 raise ManagerError('invalid_configuration',f"Worktree path '{rel}' is not ignored",3)
         state=self.state_root
         locks=LockManager(state/self.config.lock_dir)
+        integrity={}
         with locks:
             locks.acquire([f'work/{self._lock_work_id(work_id)}'],'create')
             # Revalidate after acquiring the operation lock so concurrent create
             # attempts cannot both pass the preflight checks.
             if self.git.run(('show-ref','--verify','--quiet',f'refs/heads/{branch}'),check=False).returncode==0 or path.exists():
                 raise ManagerError('operation_failed','Worktree branch or path already exists',5)
+            if init_submodules:
+                # An already incomplete module dir blocks the worktree before it
+                # exists; the fingerprint covers the update that follows.
+                self._validate_main_submodules()
+                integrity=self._main_submodule_integrity_snapshot()
             path.parent.mkdir(parents=True,exist_ok=True)
             self.git.run(('worktree','add','-b',branch,str(path),base))
         init_result='not_requested'
         if init_submodules:
-            if self.git.run(('-C',str(path),'submodule','update','--init','--recursive'),check=False).returncode:
+            update=self.git.run(('-C',str(path),'submodule','update','--init','--recursive'),check=False)
+            # A mutation is reported with its paths for both outcomes and takes
+            # precedence over the generic update failure.
+            mutations=self._submodule_integrity_mutations(integrity,self._main_submodule_integrity_snapshot())
+            if mutations:
+                raise ManagerError('operation_failed','Submodule initialization altered the main worktree module dirs: '+', '.join(mutations)+'; worktree and branch retained',5)
+            if update.returncode:
                 # The worktree and its branch are kept so the operator can
                 # inspect the partially initialized state and decide.
                 raise ManagerError('operation_failed','Submodule initialization failed; worktree and branch retained',5)
@@ -116,6 +128,53 @@ class WorktreeLifecycle:
                 continue
             return completed.returncode==0
         return False
+    def _declared_submodule_names(self)->list[str]:
+        """Return the submodule names declared in .gitmodules, if any."""
+        listed=self.git.run(('config','-f',str(self.config.repo_root/'.gitmodules'),'--get-regexp',r'^submodule\..*\.path$'),check=False)
+        if listed.returncode: return []
+        names=[]
+        for line in listed.stdout.splitlines():
+            key=line.partition(' ')[0]
+            if key.startswith('submodule.') and key.endswith('.path'):
+                names.append(key[len('submodule.'):-len('.path')])
+        return names
+    def _main_module_dir(self,name: str)->Path:
+        value=Path(self.git.run(('rev-parse','--git-path',f'modules/{name}')).stdout.strip())
+        return (self.config.repo_root/value).resolve() if not value.is_absolute() else value.resolve()
+    def _validate_main_submodules(self)->None:
+        """Reject an incomplete module dir before creating a worktree."""
+        for name in self._declared_submodule_names():
+            module_dir=self._main_module_dir(name)
+            if not module_dir.is_dir(): continue
+            if not (module_dir/'objects').is_dir() or not (module_dir/'HEAD').is_file():
+                raise ManagerError('operation_failed',f"Main submodule module dir is incomplete: {module_dir}; no worktree or branch was created",5)
+    def _main_submodule_integrity_snapshot(self)->dict[str,dict]:
+        """Fingerprint every module dir that already exists in the main worktree."""
+        snapshot={}
+        for name in self._declared_submodule_names():
+            module_dir=self._main_module_dir(name)
+            if not module_dir.is_dir(): continue
+            objects=module_dir/'objects'; object_files=0; object_bytes=0
+            if objects.is_dir():
+                for root,_dirs,files in os.walk(objects):
+                    for entry in files:
+                        object_files+=1
+                        try: object_bytes+=os.path.getsize(os.path.join(root,entry))
+                        except OSError: pass
+            try: head=(module_dir/'HEAD').read_text(encoding='utf-8',errors='replace')
+            except OSError: head=''
+            snapshot[str(module_dir)]={'objects':objects.is_dir(),'object_files':object_files,
+                                       'object_bytes':object_bytes,'head':head}
+        return snapshot
+    @staticmethod
+    def _submodule_integrity_mutations(before: dict,after: dict)->list[str]:
+        """Return the module dirs that disappeared or changed their fingerprint."""
+        mutations=[]
+        for path,recorded in before.items():
+            current=after.get(path)
+            if current is None or not current['objects'] or current!=recorded:
+                mutations.append(path)
+        return sorted(mutations)
     def cleanup(self,work_id: str,discard: bool=False,base: str='main')->dict[str,str]:
         branch=self._branch(work_id); path=self._path(work_id); self._base(base)
         registered={item['path'] for item in self.list()}
