@@ -53,6 +53,15 @@ and `verify`. They are off by default and report the observed state of each
 step; `prepare` and `verify` require the matching configured command and are
 rejected as `invalid_configuration` before any worktree or branch is created.
 
+With `init_submodules`, the call fingerprints the module directories of the
+submodules already initialized in the main worktree. An existing module
+directory without `objects` or `HEAD` is rejected as `operation_failed` with
+exit code 5 before any worktree or branch is created. A module directory that
+changes, disappears or loses `objects` during the update fails the same way with
+the affected paths and retains the worktree and its branch. The guard is
+read-only: it does not restore or delete module directories, and a healthy call
+still reports `initialized`.
+
 Mutating dry runs do not invoke lifecycle operations. A per-call authorization is
 required only in an execution, that is, when `dry_run` is absent or `false`; a
 dry run of a destructive operation succeeds without it. A destructive execute
