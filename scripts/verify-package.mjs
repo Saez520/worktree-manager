@@ -56,8 +56,8 @@ const runtimeVersion = versionMatch[1];
 if (manifest.version !== runtimeVersion) {
   fail(`manifest version ${manifest.version} differs from __version__ ${runtimeVersion}`);
 }
-if (manifest.version !== "1.2.1") {
-  fail(`version is ${manifest.version}, expected 1.2.1`);
+if (manifest.version !== "1.2.2") {
+  fail(`version is ${manifest.version}, expected 1.2.2`);
 }
 
 if (manifest.bin !== undefined) {
@@ -162,8 +162,8 @@ for (const file of pyFiles) {
     continue;
   }
   const source = readLocal(join("worktree_manager", file));
-  if (source.includes("1.2.1")) {
-    fail(`version literal 1.2.1 found in worktree_manager/${file}; keep it only in __init__.py`);
+  if (source.includes("1.2.2")) {
+    fail(`version literal 1.2.2 found in worktree_manager/${file}; keep it only in __init__.py`);
   }
 }
 

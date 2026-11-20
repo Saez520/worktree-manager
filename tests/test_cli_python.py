@@ -19,7 +19,7 @@ class PythonCliTests(unittest.TestCase):
         return directory
     def test_help_and_version_outside_repository(self):
         help_result=self.run_cli('--help'); version=self.run_cli('--version')
-        self.assertEqual(help_result.returncode,0); self.assertEqual(version.stdout.strip(),'1.2.1')
+        self.assertEqual(help_result.returncode,0); self.assertEqual(version.stdout.strip(),'1.2.2')
     def test_usage_error_is_single_json_document(self):
         result=self.run_cli('--json','not-a-command')
         self.assertEqual(result.returncode,2); doc=json.loads(result.stdout)
