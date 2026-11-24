@@ -24,7 +24,7 @@ class NpmSetupTests(unittest.TestCase):
     def test_diagnose_reports_active_without_writing(self):
         result = run_setup(())
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("worktree-for-agents 1.2.2", result.stdout)
+        self.assertIn("worktree-for-agents 1.2.3", result.stdout)
         self.assertIn("npm package", result.stdout)
         self.assertIn("active", result.stdout)
         self.assertIn("opencode config", result.stdout)
@@ -33,7 +33,7 @@ class NpmSetupTests(unittest.TestCase):
         result = run_setup(("--json",))
         self.assertEqual(result.returncode, 0, result.stderr)
         status = json.loads(result.stdout)
-        self.assertEqual(status["version"], "1.2.2")
+        self.assertEqual(status["version"], "1.2.3")
         self.assertTrue(any(i["kind"] == "npm package" and i["active"] for i in status["installations"]))
 
     def test_diagnose_reports_only_npm_package(self):

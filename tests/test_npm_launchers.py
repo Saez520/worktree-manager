@@ -69,7 +69,7 @@ class NpmLauncherTests(unittest.TestCase):
             ["node", str(CLI), "--version"], text=True, capture_output=True, cwd=str(PACKAGE_DIR)
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "1.2.2")
+        self.assertEqual(result.stdout.strip(), "1.2.3")
 
     def test_no_python_exits_127(self):
         code, stdout, stderr = run_node(

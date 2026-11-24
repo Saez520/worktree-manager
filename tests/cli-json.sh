@@ -24,7 +24,7 @@ python3 - "$tmp/result.json" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1], encoding="utf-8"))
 assert result["contract_version"] == 1
-assert result["tool_version"] == "1.2.2"
+assert result["tool_version"] == "1.2.3"
 assert result["operation"] == "list"
 assert result["result"] == "success"
 assert len(result["data"]["worktrees"]) == 1
