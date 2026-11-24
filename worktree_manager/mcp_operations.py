@@ -6,7 +6,7 @@ from .models import ManagerError
 from .worktree_lifecycle import WorktreeLifecycle
 from .recovery_manager import RecoveryManager
 from .mcp_contract import validate_request, envelope
-from .worktree_lifecycle import validate_work_id
+from .worktree_lifecycle import path_key, validate_work_id
 from .target_direct_adapter import TargetDirectAdapter
 from .state_digest import complete_state_digest, state_digest, canonical_hash
 import hashlib
@@ -76,7 +76,7 @@ def call(tool, request):
         data = target_adapter(tx).recover()
         return envelope(tool, str(root), data=data, transaction_id=tx)
     if tool == "worktree_status":
-        matches = [item for item in lifecycle.list() if item["path"] == str(lifecycle._path(req["work_id"]))]
+        matches = [item for item in lifecycle.list() if path_key(item["path"]) == path_key(lifecycle._path(req["work_id"]))]
         journal = []
         if lifecycle.journal.root.exists():
             for entry in sorted(lifecycle.journal.root.iterdir()):
@@ -117,7 +117,7 @@ def call(tool, request):
         if dry:
             base=req.get("base", "main"); lifecycle._base(base)
             path=lifecycle._path(req["work_id"])
-            if str(path) not in {item["path"] for item in lifecycle.list()} or not path.is_dir(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
+            if path_key(path) not in {path_key(item["path"]) for item in lifecycle.list()} or not path.is_dir(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
             if lifecycle.git.run(("symbolic-ref", "--short", "HEAD")).stdout.strip()!=base: raise ManagerError("invalid_identity", f"Current branch must be '{base}'", 3)
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
             from .commit_message import compose_commit_message
@@ -130,7 +130,7 @@ def call(tool, request):
             raise ManagerError("discard_consent_required", "Separate explicit discard consent is required", 3)
         if dry:
             path=lifecycle._path(req["work_id"])
-            if str(path) not in {item["path"] for item in lifecycle.list()} or not path.exists(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
+            if path_key(path) not in {path_key(item["path"]) for item in lifecycle.list()} or not path.exists(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
             lifecycle._base(req.get("base", "main"))
             changed=bool(lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout)
             if changed and not req.get("discard"): raise ManagerError("intervention_required", "Worktree has changes; discard is required", 5)

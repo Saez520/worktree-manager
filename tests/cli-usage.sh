@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-(cd "$tmp" && "$ROOT/worktree.sh" --version) | grep -qx '1.2.1'
+(cd "$tmp" && "$ROOT/worktree.sh" --version) | grep -qx '1.2.2'
 help="$(cd "$tmp" && "$ROOT/worktree.sh" --help)"
 printf '%s\n' "$help" | grep -q 'target-direct'
 target_direct_help="$(cd "$tmp" && "$ROOT/worktree.sh" target-direct --help)"

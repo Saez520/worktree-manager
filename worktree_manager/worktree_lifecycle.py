@@ -15,6 +15,17 @@ from .lock_manager import LockManager
 from .transaction_journal import TransactionJournal
 from .commit_message import compose_commit_message
 
+def path_key(value, separator=os.sep):
+    """Normalize a path for identity comparisons across Git and the filesystem.
+
+    Git reports worktree paths with forward slashes on every platform, while
+    str(Path.resolve()) uses the native separator and preserves drive-letter
+    case on Windows. Comparing both sides through this key avoids rejecting
+    registered worktrees.
+    """
+    normalized = str(value).replace(separator, '/')
+    return normalized.lower() if os.name == 'nt' else normalized
+
 _WORK_ID = re.compile(r'^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$')
 def validate_work_id(value: str) -> str:
     if not value or value.startswith('-') or not _WORK_ID.fullmatch(value) or any(p in ('.','..') or p.startswith('--') for p in value.split('/')):
@@ -177,8 +188,8 @@ class WorktreeLifecycle:
         return sorted(mutations)
     def cleanup(self,work_id: str,discard: bool=False,base: str='main')->dict[str,str]:
         branch=self._branch(work_id); path=self._path(work_id); self._base(base)
-        registered={item['path'] for item in self.list()}
-        if str(path) not in registered or not path.exists(): raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
+        registered={path_key(item['path']) for item in self.list()}
+        if path_key(path) not in registered or not path.exists(): raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
         status=self.git.run(('-C',str(path),'status','--porcelain','--untracked-files=all')).stdout
         commits=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False).stdout.strip() or '0'
         if (status or int(commits)>0) and not discard: raise ManagerError('intervention_required','Worktree has changes or commits; explicit discard consent is required',5)
@@ -189,7 +200,7 @@ class WorktreeLifecycle:
             # The identity and mutable worktree state are checked again after
             # lock acquisition; all expected rejection paths above precede the
             # test-only barrier and any lock creation.
-            if str(path) not in {item['path'] for item in self.list()} or not path.exists():
+            if path_key(path) not in {path_key(item['path']) for item in self.list()} or not path.exists():
                 raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
             status=self.git.run(('-C',str(path),'status','--porcelain','--untracked-files=all')).stdout
             commits=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False).stdout.strip() or '0'
@@ -210,8 +221,8 @@ class WorktreeLifecycle:
         if commit_body is None and isinstance(request,dict): commit_body=request.get('commit_body')
         if merge_strategy is None and isinstance(request,dict): merge_strategy=request.get('merge_strategy')
         merge_strategy=validate_merge_strategy(merge_strategy or DEFAULT_MERGE_STRATEGY)
-        registered={item['path'] for item in self.list()}
-        if str(path) not in registered or not path.is_dir():
+        registered={path_key(item['path']) for item in self.list()}
+        if path_key(path) not in registered or not path.is_dir():
             raise ManagerError('invalid_identity','Worktree identity does not match registration',3)
         current=self.git.run(('symbolic-ref','--short','HEAD')).stdout.strip()
         if current != base: raise ManagerError('invalid_identity',f"Current branch must be '{base}'",3)
@@ -319,7 +330,7 @@ class WorktreeLifecycle:
                 if merge_strategy=='squash': meta['squash']=after
                 save_meta('merged')
                 self.git.run(('worktree','remove','--force','--',str(path)))
-                if path.exists() or str(path) in {item['path'] for item in self.list()}:
+                if path.exists() or path_key(path) in {path_key(item['path']) for item in self.list()}:
                     save_meta('pending_manual'); raise ManagerError('operation_failed','Worktree removal could not be verified',5)
                 save_meta('removed')
                 if self.git.run(('rev-parse',f'refs/heads/{branch}')).stdout.strip()!=origin:
