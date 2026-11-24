@@ -120,6 +120,7 @@ def call(tool, request):
             if path_key(path) not in {path_key(item["path"]) for item in lifecycle.list()} or not path.is_dir(): raise ManagerError("invalid_identity", "Worktree identity does not match registration", 3)
             if lifecycle.git.run(("symbolic-ref", "--short", "HEAD")).stdout.strip()!=base: raise ManagerError("invalid_identity", f"Current branch must be '{base}'", 3)
             if lifecycle.git.run(("-C", str(path), "status", "--porcelain", "--untracked-files=all")).stdout: raise ManagerError("intervention_required", "Worktree has uncommitted changes; it was retained", 5)
+            lifecycle.verify_base_ancestry(base, lifecycle._branch(req["work_id"]))
             from .commit_message import compose_commit_message
             _subject, _body = compose_commit_message(req["work_id"], req.get("commit_title"), req.get("commit_body"))
             strategy = req.get("merge_strategy", "squash")

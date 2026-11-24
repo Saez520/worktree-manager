@@ -20,6 +20,7 @@ class ManagerError(Exception):
     code: str
     message: str
     exit_code: int
+    details: dict[str, Any] | None = None
 
     def __str__(self) -> str:
         return self.message
@@ -45,6 +46,7 @@ class OperationResult:
                 "code": self.error.code,
                 "message": self.error.message,
                 "exit_code": self.error.exit_code,
+                **({"details": self.error.details} if self.error.details else {}),
             },
         }
 

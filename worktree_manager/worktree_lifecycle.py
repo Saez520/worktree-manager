@@ -209,6 +209,47 @@ class WorktreeLifecycle:
             self.git.run(('worktree','remove',*(('--force',) if discard else ()),str(path)))
             self.git.run(('branch','-D' if discard else '-d',branch))
         return {'cleaned':work_id,'branch':branch,'worktree':str(path)}
+    def verify_base_ancestry(self,base: str,branch: str)->tuple[str,str]:
+        """Fail closed with base_changed unless the base tip is an ancestor of the branch.
+
+        When the base tip is an ancestor of the branch tip, integrating the
+        branch tree on top of the base tip yields exactly the branch tree that
+        was built and validated. Any other relation means the base moved after
+        the branch was built, so the validated tree would not be what lands.
+        Returns (base_tip, branch_tip); mutates nothing.
+        """
+        base_tip=self.git.run(('rev-parse','--verify',f'refs/heads/{base}^{{commit}}')).stdout.strip()
+        branch_probe=self.git.run(('rev-parse','--verify','--quiet',f'refs/heads/{branch}^{{commit}}'),check=False)
+        if branch_probe.returncode: raise ManagerError('invalid_identity','Worktree branch does not exist',3)
+        branch_tip=branch_probe.stdout.strip()
+        probe=self.git.run(('merge-base','--is-ancestor',base_tip,branch_tip),check=False)
+        if probe.returncode==0: return base_tip,branch_tip
+        if probe.returncode!=1:
+            raise ManagerError('operation_failed','Could not compare the base with the worktree branch; nothing was changed',5)
+        built_on=self.git.run(('merge-base',base_tip,branch_tip),check=False).stdout.strip()
+        raise ManagerError('base_changed',
+            f"Base branch '{base}' moved after the worktree branch was built (current base {base_tip[:12]}, "
+            f"branch built on {built_on[:12] or 'unknown'}); merge or rebase '{base}' into the branch, commit, and retry. Nothing was changed",5,
+            {'base_branch':base,'current_base':base_tip,'expected_base':built_on,'branch_head':branch_tip})
+    def _land(self,tree: str,parents: list[str],message: str)->str:
+        """Write one commit with the given tree and move HEAD to it as a compare-and-swap.
+
+        The commit is created with explicit parents and published with
+        `merge --ff-only`: if HEAD is no longer the first parent, Git refuses
+        instead of integrating. Returns the new HEAD.
+        """
+        args=['commit-tree',tree]
+        for parent in parents: args+=['-p',parent]
+        commit=self.git.run((*args,'-m',message)).stdout.strip()
+        landed=self.git.run(('merge','--ff-only',commit),check=False)
+        if landed.returncode:
+            head=self.git.head()
+            if head!=parents[0]:
+                raise ManagerError('base_changed',
+                    f"Base branch moved while integrating (expected {parents[0][:12]}, current {head[:12]}); nothing was integrated",5,
+                    {'current_base':head,'expected_base':parents[0]})
+            raise ManagerError('operation_failed','Fast-forward of the base failed; nothing was integrated',5)
+        return self.git.head()
     def complete(self,work_id: str,base: str,preserve_dirty: bool=False,transaction_id: str|None=None,plan_hash: str|None=None,request:dict|None=None,commit_title=None,commit_body=None,merge_strategy: str|None=None)->dict[str,str]:
         """Integrate a worktree branch and retire it only after verified success.
 
@@ -233,6 +274,7 @@ class WorktreeLifecycle:
         status=self.git.run(('status','--porcelain','--untracked-files=all')).stdout
         if status and not preserve_dirty:
             raise ManagerError('intervention_required','Destination has uncommitted changes; use --preserve-dirty to retain them',5)
+        self.verify_base_ancestry(base,branch)
         if merge_strategy=='preserve-history':
             ahead=self.git.run(('rev-list','--count',f'{base}..{branch}'),check=False)
             if ahead.returncode:
@@ -266,6 +308,10 @@ class WorktreeLifecycle:
         with locks:
             locks.acquire([f'repository-{key}',f'work/{self._lock_work_id(work_id)}'],'complete')
             try:
+                # Re-verified under the lock and before any journal write so a
+                # rejected drift leaves no transaction behind.
+                before,origin=self.verify_base_ancestry(base,branch)
+                meta['before']=before; meta['origin']=origin
                 journal.write_binding(tx, {'transaction_id':tx,'repo':str(self.config.repo_root.resolve()),'work_id':work_id,
                     'operation':'worktree_complete','request':request or {},'plan_hash':plan_hash,
                     'merge_strategy':merge_strategy,
@@ -302,30 +348,25 @@ class WorktreeLifecycle:
                 meta['commit_subject']=subject
                 meta['commit_body']=body
                 save_meta('merge_started')
-                if merge_strategy=='preserve-history':
-                    message=subject+('\n\n'+body if body else '')
-                    merged=self.git.run(('merge','--no-ff','-m',message,branch),check=False)
-                    if merged.returncode:
-                        self.git.run(('merge','--abort'),check=False)
-                        save_meta('pending_manual')
-                        raise ManagerError('operation_failed','Preserve-history merge failed; worktree and branch retained',5)
-                    after=self.git.head()
-                    parents=self.git.run(('rev-list','--parents','-n','1',after)).stdout.split()
-                    if after==before or len(parents)!=3 or parents[0]!=after or parents[1]!=before or parents[2]!=origin:
-                        save_meta('pending_manual'); raise ManagerError('operation_failed','Merge commit verification failed; resources retained',5)
-                else:
-                    merged=self.git.run(('merge','--squash',branch),check=False)
-                    if merged.returncode or self.git.run(('diff','--cached','--quiet'),check=False).returncode==0:
-                        self.git.run(('reset','--merge'),check=False)
+                message=subject+('\n\n'+body if body else '')
+                # Both strategies land a commit whose tree is the verified branch
+                # tree, parented on the verified base tip, via ff-only.
+                branch_tree=self.git.run(('rev-parse',f'{origin}^{{tree}}')).stdout.strip()
+                if merge_strategy=='squash':
+                    if self.git.run(('rev-parse',f'{before}^{{tree}}')).stdout.strip()==branch_tree:
                         save_meta('pending_manual')
                         raise ManagerError('operation_failed','Squash merge failed or produced no changes; worktree and branch retained',5)
-                    commit_args=['commit','-m',subject]
-                    if body:
-                        commit_args += ['-m',body]
-                    self.git.run(tuple(commit_args))
-                    after=self.git.head()
-                    if after==before or len(self.git.run(('rev-list','--parents','-n','1',after)).stdout.split())!=2:
-                        save_meta('pending_manual'); raise ManagerError('operation_failed','Squash commit verification failed; resources retained',5)
+                    parents=[before]
+                else: parents=[before,origin]
+                try: after=self._land(branch_tree,parents,message)
+                except ManagerError:
+                    save_meta('pending_manual'); raise
+                landed=self.git.run(('rev-list','--parents','-n','1',after)).stdout.split()
+                if (after==before or landed!=[after,*parents] or
+                    self.git.run(('rev-parse',f'{after}^{{tree}}')).stdout.strip()!=branch_tree or
+                    self.git.run(('diff-index','--quiet','HEAD','--'),check=False).returncode):
+                    save_meta('pending_manual')
+                    raise ManagerError('operation_failed',('Merge commit' if merge_strategy=='preserve-history' else 'Squash commit')+' verification failed; resources retained',5)
                 meta['integrated']=after
                 if merge_strategy=='squash': meta['squash']=after
                 save_meta('merged')

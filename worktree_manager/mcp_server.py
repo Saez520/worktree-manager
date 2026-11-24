@@ -40,7 +40,7 @@ def dispatch(message):
             err = getattr(exc, "code", "invalid_request")
             message = str(exc)
             exit_code = getattr(exc, "exit_code", 3)
-            result = error_envelope(name or "", absolute_repository((params.get("arguments") or {}).get("repo")), err, message, exit_code)
+            result = error_envelope(name or "", absolute_repository((params.get("arguments") or {}).get("repo")), err, message, exit_code, getattr(exc, "details", None))
             return {"content": [{"type": "text", "text": json.dumps(result, sort_keys=True)}], "structuredContent": result, "isError": True}
     raise ValueError("method_not_found")
 

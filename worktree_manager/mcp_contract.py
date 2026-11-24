@@ -98,9 +98,11 @@ def absolute_repository(value):
     except (OSError, RuntimeError):
         return str(path.absolute())
 
-def error_envelope(operation, repository, code, message, exit_code):
+def error_envelope(operation, repository, code, message, exit_code, details=None):
     """Canonical envelope for a failed operation, shared by every transport."""
     result = "pending_intervention" if code == "intervention_required" else "failure"
+    error = {"code": code, "message": message, "exit_code": exit_code}
+    if details:
+        error["details"] = details
     return envelope(operation, repository or "", result, data={}, warnings=[],
-                    error={"code": code, "message": message, "exit_code": exit_code},
-                    transaction_id=None)
+                    error=error, transaction_id=None)

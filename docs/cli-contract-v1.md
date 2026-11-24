@@ -1,8 +1,8 @@
 # CLI output contract
 
-The default presentation is human-readable. `--json` explicitly selects one JSON document on stdout; diagnostics remain on stderr. JSON objects contain `contract_version` (integer, currently `1`), `tool_version` (string, currently `1.2.2`), `operation`, `result`, `data`, `warnings`, and `error`. `data` is an object whose fields depend on the operation and result; examples include `path`, `branch`, `worktree`, `pruned`, and `recovered`. There is no general `data.output` field: the dispatcher’s human-readable text is not included in the JSON data object.
+The default presentation is human-readable. `--json` explicitly selects one JSON document on stdout; diagnostics remain on stderr. JSON objects contain `contract_version` (integer, currently `1`), `tool_version` (string, currently `1.2.3`), `operation`, `result`, `data`, `warnings`, and `error`. `data` is an object whose fields depend on the operation and result; examples include `path`, `branch`, `worktree`, `pruned`, and `recovered`. There is no general `data.output` field: the dispatcher’s human-readable text is not included in the JSON data object.
 
-`result` is `success`, `failure`, `pending_intervention`, or `no_pending_work`. Errors are objects with stable `code`, human `message`, and public `exit_code`. Exit codes are 0 success/no pending work, 2 usage, 3 invalid configuration/identity, 4 resource lock, 5 conflict/intervention, and 6 access/dependency. The legacy entrypoint and its codes remain unchanged when `--json` is absent. Errors whose legacy text does not provide a reliable subtype are reported as `operation_failed` (exit 5); clients should rely on the stable code, not parse the message.
+`result` is `success`, `failure`, `pending_intervention`, or `no_pending_work`. Errors are objects with stable `code`, human `message`, and public `exit_code`, plus an optional `details` object published only by errors that carry structured fields (currently `base_changed`). Exit codes are 0 success/no pending work, 2 usage, 3 invalid configuration/identity, 4 resource lock, 5 conflict/intervention, and 6 access/dependency. The legacy entrypoint and its codes remain unchanged when `--json` is absent. Errors whose legacy text does not provide a reliable subtype are reported as `operation_failed` (exit 5); clients should rely on the stable code, not parse the message.
 
 `--version` prints the tool version. The contract version describes the JSON schema and is independent from the tool version. Breaking schema changes require a new contract version. Legacy invocations do not opt into JSON implicitly; `list` retains Git porcelain output without `--json`. JSON changes presentation only and does not authorize, suppress, or alter lifecycle effects, locks, journals, backups, consent, or recovery.
 
@@ -52,22 +52,63 @@ written when non-empty. Both values are stored in `meta.json` as
 `commit_subject` and `commit_body`, and the dry run publishes them. A
 title or body change between preflight and execute causes `plan_mismatch`.
 
+## Base drift
+
+`complete` integrates only when the current tip of the base branch is an
+ancestor of the worktree branch tip (`git merge-base --is-ancestor <base>
+<branch>`). In that case the integrated tree is identical to the branch tree,
+which is the tree that was built and validated. Otherwise the base moved after
+the branch was built and `complete` fails closed:
+
+- `error.code` is `base_changed`, `result` is `failure` and the exit code is `5`.
+- `error.message` is `Base branch '<base>' moved after the worktree branch was
+  built (current base <sha12>, branch built on <sha12>); merge or rebase
+  '<base>' into the branch, commit, and retry. Nothing was changed`.
+- `error.details` carries `base_branch`, `current_base` (the tip of the base
+  now), `expected_base` (the merge base: the base commit the branch was built
+  on) and `branch_head`.
+- Nothing is mutated: no commit, no journal entry, no backup, no lock residue;
+  the base, the branch, the worktree and any destination changes kept with
+  `--preserve-dirty` are untouched.
+
+The check runs before any mutation and again under the repository lock. The
+way forward is the orchestrator's: merge or rebase the base into the worktree
+branch, commit, and run `complete` again; the base tip is then an ancestor and
+the integration proceeds. A base that moved only by being reset backwards still
+satisfies the rule and integrates the validated branch tree. A base that gained
+commits whose patches the branch carries by cherry-pick is rejected too: the
+rule is conservative and never integrates a tree other than the branch tree.
+
 ## Merge strategy
 
 `complete` accepts `--merge-strategy` with the values `squash` (default) and
 `preserve-history`. Squash integrates the branch as one new commit on the base
 branch and keeps the existing verification. Preserve-history integrates it with
-an explicit merge commit (`git merge --no-ff`) whose first parent is the base
-position before completion and whose second parent is the branch tip, so the
-branch commits remain reachable. Neither strategy uses a fast-forward.
+a merge commit whose first parent is the base position before completion and
+whose second parent is the branch tip, so the branch commits remain reachable.
+
+Both strategies land the commit the same way: the manager writes a commit whose
+tree is the verified branch tree (`git commit-tree`, parented on the verified
+base tip) and publishes it with `git merge --ff-only`. This is a
+compare-and-swap: if the base moves between the verification and the write,
+Git refuses the fast-forward and `complete` fails with `base_changed` instead of
+integrating. The branch itself is not fast-forwarded and its commits stay
+separate in squash. Before the worktree and the branch are removed, the
+integrated commit is verified: its parents, its tree (equal to the branch tree)
+and a clean tracked state. The commit is written without running commit hooks.
 
 The result publishes `merge_strategy` and `integrated_commit` in both cases;
 `squash_commit` is published only for squash and equals `integrated_commit`.
 The transaction `meta.json` records `merge_strategy` and `integrated` (plus
 `squash` for squash), and `binding.json` records `merge_strategy`. Recovery
-validates the parent shape recorded by the strategy; a transaction without a
-recorded strategy is read as squash, and an unknown value is reported as
-`invalid_journal` with exit code 5 while retaining the evidence.
+validates the parent shape recorded by the strategy and that the integrated
+tree equals the branch tree; a landed commit with the right parents and any
+other tree, or a base that moved after the landing, is reported as
+`intervention_required` with exit code 5 and every resource is retained. A
+transaction without a recorded strategy is read as squash, and an unknown value
+is reported as `invalid_journal` with exit code 5 while retaining the evidence.
+A failed fast-forward leaves the transaction in `pending_manual`; `recover`
+restores any captured destination state and closes it as `restored`.
 
 An invalid `--merge-strategy` value is rejected by the parser with
 `usage_error` and exit code 2 before any mutation. With `preserve-history`,

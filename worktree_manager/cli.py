@@ -37,13 +37,13 @@ def _request_json_mode(raw_argv):
     from .mcp_contract import TOOL_NAMES,absolute_repository,error_envelope
     pos=raw_argv.index('--request-json')
     request=None; tool=None
-    def fail(code,message,exit_code):
+    def fail(code,message,exit_code,details=None):
         operation=tool
         if not operation and isinstance(request,dict) and isinstance(request.get('operation'),str):
             operation=request['operation']
         operation=operation or 'request-json'
         repository=absolute_repository(request.get('repo')) if isinstance(request,dict) else ''
-        document=error_envelope(operation,repository,code,message,exit_code)
+        document=error_envelope(operation,repository,code,message,exit_code,details)
         sys.stdout.write(json.dumps(document,sort_keys=True,separators=(',',':'))+'\n')
         return exit_code
     extra=[arg for index,arg in enumerate(raw_argv) if index not in (pos,pos+1) and arg!='--json']
@@ -65,7 +65,7 @@ def _request_json_mode(raw_argv):
         error=result.get('error')
         return 0 if not error else error.get('exit_code',5)
     except ManagerError as exc:
-        return fail(exc.code,str(exc),exc.exit_code)
+        return fail(exc.code,str(exc),exc.exit_code,exc.details)
     except (ValueError,OSError) as exc:
         return fail('invalid_request',str(exc),3)
 def main(argv=None)->int:

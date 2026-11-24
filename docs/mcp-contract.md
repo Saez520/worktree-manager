@@ -45,7 +45,8 @@ in [the installation guide](installation.md).
 
 A rejected call publishes the same nine-key envelope as an accepted one, with
 `result` set to `failure` or `pending_intervention` and `error` carrying
-`code`, `message` and `exit_code`. The command line publishes that identical
+`code`, `message` and `exit_code`, plus an optional `details` object that only
+errors with structured fields publish (currently `base_changed`). The command line publishes that identical
 envelope for `--request-json`, so both transports can be read by one client.
 
 `worktree_create` accepts the optional booleans `init_submodules`, `prepare`
@@ -95,6 +96,26 @@ the transactions that declare the same work identifier. Unrelated refs or
 worktrees do not invalidate a `worktree_complete` preflight, while a commit on
 the base after the preflight still does.
 
+## Base drift
+
+`worktree_complete` integrates only when the current base tip is an ancestor of
+the worktree branch tip, so the integrated tree equals the branch tree that was
+built and validated. The check is part of the dry run and of the execute, and
+it runs before any mutation:
+
+- Drift **before** the dry run: the dry run fails with `base_changed`
+  (`isError: true`, exit code 5) and publishes no `plan_hash`.
+- Drift **after** the dry run, with `plan_hash`: the execute fails with
+  `plan_mismatch`, because the closure digest covers the base commit. This check
+  runs first and is unchanged.
+- Drift with no `plan_hash` (or any move between the check and the write): the
+  execute fails with `base_changed`.
+
+The error carries `error.details` with `base_branch`, `current_base`,
+`expected_base` (the merge base the branch was built on) and `branch_head`.
+Nothing is mutated and no transaction is left behind. To proceed, merge or
+rebase the base into the branch, commit, and run the dry run again.
+
 ## End-to-end verification
 
 Run the real stdio client tests from the repository root:
@@ -126,8 +147,12 @@ at closure time.`.
 
 `worktree_complete` accepts the optional string `merge_strategy` with the enum
 values `squash` (default) and `preserve-history`. Squash integrates the branch
-as one commit; preserve-history records an explicit merge commit that keeps the
-branch commits. Neither strategy uses a fast-forward.
+as one commit; preserve-history records a merge commit that keeps the branch
+commits. Both write a commit whose tree is the verified branch tree, parented
+on the verified base tip, and publish it with `git merge --ff-only` as a
+compare-and-swap: a base that moves before the write is refused as
+`base_changed` instead of being integrated. The branch itself is not
+fast-forwarded.
 
 The field is validated as a string and against the enum before any mutation; a
 value outside the enum is rejected as `invalid_request` with exit code 3. It is
@@ -136,11 +161,15 @@ strategy cannot execute the other and reports `plan_mismatch` with exit code 5.
 
 A dry run publishes `data.merge_strategy` and the planned `mutations`:
 `squash_merge` for squash, or `merge_no_ff` for preserve-history, followed by
-`remove_worktree` and `delete_branch` in both cases. Execute returns
+`remove_worktree` and `delete_branch` in both cases (the labels are stable
+names of the planned integration, not Git command lines). Execute returns
 `merge_strategy` and `integrated_commit`; `squash_commit` is present only for
 squash and equals `integrated_commit`. The transaction records the strategy and
 the integrated commit. Recovery validates the parent shape recorded by the
-strategy, reads a transaction without the field as squash, and reports an
-unknown value as `invalid_journal` with exit code 5 while retaining evidence.
+strategy and that the integrated tree equals the branch tree, reads a
+transaction without the field as squash, and reports an unknown value as
+`invalid_journal` with exit code 5 while retaining evidence. A landed commit
+whose tree differs from the branch tree, or a base that moved after the landing,
+is `intervention_required` with every resource retained.
 With `preserve-history`, a branch with no commits ahead of the base fails as
 `operation_failed` with exit code 5 without a transaction or mutation.

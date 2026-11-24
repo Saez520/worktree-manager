@@ -52,12 +52,19 @@ path.
 
 ```text
 worktree.sh [--repo ABS] [--config ABS] [--json] create <id> [--base BRANCH] [--init-submodules] [--prepare] [--verify]
-worktree.sh [globals] complete <id> [--preserve-dirty] [--title TEXT] [--body TEXT]
+worktree.sh [globals] complete <id> [--base BRANCH] [--preserve-dirty] [--title TEXT] [--body TEXT] [--merge-strategy squash|preserve-history]
 worktree.sh [globals] cleanup <id> [--discard]
 worktree.sh [globals] recover [<transaction-id>]
 worktree.sh [globals] prune
 worktree.sh [globals] list
 ```
+
+`complete` integrates only when the current base tip is an ancestor of the
+worktree branch, so the integrated tree is exactly the branch tree that was
+built and validated. If the base moved after the branch was created, it fails
+closed with `base_changed` (exit code `5`) and changes nothing: merge or rebase
+the base into the branch, commit, and run `complete` again. See
+[the CLI contract](docs/cli-contract-v1.md#base-drift).
 
 `create --init-submodules` initializes the declared submodules inside the new
 worktree. It also fingerprints the module directories that already exist in the

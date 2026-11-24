@@ -45,6 +45,14 @@ class RecoveryManager:
                 return self._recover_locked(transaction_id,phase)
         return self._recover_locked(transaction_id,phase)
 
+    def _tree_matches_origin(self,commit,meta)->bool:
+        """True when the commit tree equals the tree of the recorded branch tip."""
+        origin=meta.get('origin')
+        if not origin or not commit: return False
+        landed=self.repo.run(('rev-parse','--verify','--quiet',f'{commit}^{{tree}}'),check=False)
+        built=self.repo.run(('rev-parse','--verify','--quiet',f'{origin}^{{tree}}'),check=False)
+        return landed.returncode==0 and built.returncode==0 and landed.stdout.strip()==built.stdout.strip()
+
     def _recover_locked(self,transaction_id,phase):
         if phase=='pending_manual':
             if self.repo is None: return ResultKind.PENDING_INTERVENTION,{'transaction_id':transaction_id,'phase':phase}
@@ -84,6 +92,9 @@ class RecoveryManager:
                 expected_parents=3 if merge_strategy=='preserve-history' else 2
                 valid_parents=len(parents)==expected_parents and parents[0]==head and parents[1]==before
                 if merge_strategy=='preserve-history' and valid_parents: valid_parents=parents[2]==meta.get('origin')
+                # The landed tree must be exactly the branch tree; a commit with
+                # the right parents but any other tree is not durable evidence.
+                if valid_parents and not self._tree_matches_origin(head,meta): valid_parents=False
                 if (base_tip.returncode or base_tip.stdout.strip()!=head or
                     str(path.resolve()) not in registered_paths or
                     worktree_head.returncode or worktree_head.stdout.strip()!=meta.get('origin') or
@@ -102,6 +113,7 @@ class RecoveryManager:
                 return ResultKind.SUCCESS,{'transaction_id':transaction_id,'phase':'restored','integrated':False}
             integrated=meta.get('integrated') or meta.get('squash')
             if phase in {'merged','remove_started','removed'} and (not integrated or head!=integrated): raise ManagerError('intervention_required','Repository HEAD drifted from the recorded integrated commit; resources retained',5)
+            if phase in {'merged','remove_started','removed'} and not self._tree_matches_origin(integrated,meta): raise ManagerError('intervention_required','Integrated commit tree differs from the branch tree; resources retained',5)
             if path.exists() or str(path) in registered:
                 if phase not in {'merged','remove_started'}: raise ManagerError('intervention_required','Worktree state is ambiguous; resources retained',5)
                 if self.repo.run(('-C',str(path),'status','--porcelain')).stdout: raise ManagerError('intervention_required','Worktree is dirty; resources retained',5)
